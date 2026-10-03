@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Eco.Minecarts</AssemblyName>
+    <RootNamespace>Eco.Minecarts</RootNamespace>
+    <Version>0.1.0-beta.1</Version>
+    <EnableIndustrialTracks Condition="'$(EnableIndustrialTracks)' == ''">false</EnableIndustrialTracks>
+    <DefineConstants Condition="'$(EnableIndustrialTracks)' == 'true'">$(DefineConstants);INDUSTRIAL_TRACKS</DefineConstants>
+    <!-- The inspected Windows Eco reference assemblies annotate their server surface as Windows-only. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Eco.ReferenceAssemblies"
+                      Version="0.14.1.1-beta-release-1079"
+                      PrivateAssets="all"
+                      ExcludeAssets="runtime" />
+  </ItemGroup>
+  <!-- UI-only release can preserve the installed narrow-gauge vehicle contract. -->
+  <ItemGroup Condition="'$(EnableIndustrialTracks)' != 'true'">
+    <Compile Remove="Content/IndustrialTrackContent.cs" />
+    <Compile Remove="Runtime/IndustrialRailComponent.cs" />
+  </ItemGroup>
+</Project>

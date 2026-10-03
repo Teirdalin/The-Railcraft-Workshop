@@ -1,0 +1,30 @@
+namespace Eco.Mods.TechTree;
+using Eco.Core.Items;
+using Eco.Gameplay.Items;
+using Eco.Gameplay.Skills;
+using Eco.Shared.Serialization;
+using Eco.Shared.Localization;
+[Serialized] public sealed class CoasterBendLeftObject:CoasterRailObject {static CoasterBendLeftObject()=>Occupy<CoasterBendLeftObject>("CoasterBendLeft");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Bend Left"),LocDescription("Complete coaster rail section. Align the grid-face rail ends with modular coaster rails. Place the whole section in a clear space."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterBendLeftItem:CoasterSpecialItem<CoasterBendLeftObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterBendLeft"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterBendLeftRecipe:CoasterRailRecipe<CoasterBendLeftItem>{}
+[Serialized] public sealed class CoasterBendRightObject:CoasterRailObject {static CoasterBendRightObject()=>Occupy<CoasterBendRightObject>("CoasterBendRight");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Bend Right"),LocDescription("Complete coaster rail section. Align the grid-face rail ends with modular coaster rails. Place the whole section in a clear space."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterBendRightItem:CoasterSpecialItem<CoasterBendRightObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterBendRight"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterBendRightRecipe:CoasterRailRecipe<CoasterBendRightItem>{}
+[Serialized] public sealed class CoasterBankLeftObject:CoasterRailObject {static CoasterBankLeftObject()=>Occupy<CoasterBankLeftObject>("CoasterBankLeft");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Bank Left"),LocDescription("Complete coaster rail section. Align the grid-face rail ends with modular coaster rails. Place the whole section in a clear space."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterBankLeftItem:CoasterSpecialItem<CoasterBankLeftObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterBankLeft"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterBankLeftRecipe:CoasterRailRecipe<CoasterBankLeftItem>{}
+[Serialized] public sealed class CoasterBankRightObject:CoasterRailObject {static CoasterBankRightObject()=>Occupy<CoasterBankRightObject>("CoasterBankRight");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Bank Right"),LocDescription("Complete coaster rail section. Align the grid-face rail ends with modular coaster rails. Place the whole section in a clear space."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterBankRightItem:CoasterSpecialItem<CoasterBankRightObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterBankRight"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterBankRightRecipe:CoasterRailRecipe<CoasterBankRightItem>{}
+[Serialized] public sealed class CoasterHillObject:CoasterRailObject {static CoasterHillObject()=>Occupy<CoasterHillObject>("CoasterHill");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Hill"),LocDescription("Complete coaster rail section. Align the grid-face rail ends with modular coaster rails. Place the whole section in a clear space."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterHillItem:CoasterSpecialItem<CoasterHillObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterHill"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterHillRecipe:CoasterRailRecipe<CoasterHillItem>{}
+[Serialized] public sealed class CoasterValleyObject:CoasterRailObject {static CoasterValleyObject()=>Occupy<CoasterValleyObject>("CoasterValley");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Valley"),LocDescription("Complete coaster rail section. Align the grid-face rail ends with modular coaster rails. Place the whole section in a clear space."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterValleyItem:CoasterSpecialItem<CoasterValleyObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterValley"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterValleyRecipe:CoasterRailRecipe<CoasterValleyItem>{}
+[Serialized] public sealed class CoasterLoopObject:CoasterRailObject {static CoasterLoopObject()=>Occupy<CoasterLoopObject>("CoasterLoop");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Loop Right"),LocDescription("Complete right-hand vertical loop. Place from its entry end and align the grid-face rail socket with modular coaster rails."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterLoopItem:CoasterSpecialItem<CoasterLoopObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterLoop"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterLoopRecipe:CoasterRailRecipe<CoasterLoopItem>{}
+[Serialized] public sealed class CoasterLoopLeftObject:CoasterRailObject {static CoasterLoopLeftObject()=>Occupy<CoasterLoopLeftObject>("CoasterLoopLeft");}
+[Serialized,LocDisplayName("Roller Coaster Rail - Loop Left"),LocDescription("Complete left-hand vertical loop. Place from its entry end and align the grid-face rail socket with modular coaster rails."),Weight(8000),Ecopedia("Blocks","Building Materials",createAsSubPage:true)] public sealed class CoasterLoopLeftItem:CoasterSpecialItem<CoasterLoopLeftObject>{public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterLoopLeft"));}
+[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterLoopLeftRecipe:CoasterRailRecipe<CoasterLoopLeftItem>{}

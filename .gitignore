@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+*.user
+*.suo
+*.log
+*.blend1
+.vs/

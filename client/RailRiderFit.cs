@@ -9,6 +9,9 @@ namespace EcoMinecarts.Editor
     public static class RailRiderFit
     {
         public const float SeatedHipHeight = .64f;
+        // Raise the avatar attachment, leaving the bench and dismount deck in place.
+        public const float RiderLift = .10f;
+        public static float Lift(GameObject root) => root.name == "RollerCoasterCartObject" ? 0 : RiderLift;
         public const float SlatSurfaceOffset = .015f;
         public const float CoasterCushionCentre = .91f;
         public const float CoasterCushionThickness = .13f;
@@ -28,10 +31,32 @@ namespace EcoMinecarts.Editor
         {
             var mounts = root.GetComponent<Mountable>();
             if (mounts == null || !RailVehicleDetail.Handles(root)) return;
+            var cab = root.transform.Find("CabFittings");
+            if (cab != null)
+            {
+                var cushion = cab.Find("Operator cushion");
+                var seat = mounts.seats[1].transform;
+                var point = seat.position;
+                point.y = cushion.GetComponent<Renderer>().bounds.max.y - SeatedHipHeight + RiderLift;
+                seat.position = point;
+                var floor = cab.Find("Cab floor");
+                var floorY = floor.localPosition.y + floor.localScale.y / 2;
+                var roof = cab.Find("Cab roof");
+                var desired = floorY + 2.12f + RiderLift;
+                var lift = Mathf.Max(0, desired - roof.localPosition.y);
+                roof.localPosition += Vector3.up * lift;
+                foreach (var post in cab.Cast<Transform>().Where(t => t.name == "Cab window post"))
+                {
+                    post.localPosition += Vector3.up * (lift / 2);
+                    post.localScale += Vector3.up * lift;
+                }
+                var vehicle = root.GetComponent<Vehicle>();
+                var size = vehicle.size; size.y = Mathf.Max(size.y, floorY + 2.3f + RiderLift); vehicle.size = size;
+            }
             foreach (var seat in mounts.seats.Skip(1).Where(s => (int)s.overrideAvatarState == 3 && s.name.StartsWith("PassengerSeat")))
             {
                 var p = seat.transform.localPosition;
-                p.y = Surface(root, seat) - SeatedHipHeight;
+                p.y = Surface(root, seat) - SeatedHipHeight + Lift(root);
                 seat.transform.localPosition = p;
                 // The tram benches face outwards from the central boarding area.
                 seat.transform.localRotation = Quaternion.Euler(0, root.name == "HeritageTramObject" && p.z < 0 ? 180 : 0, 0);
@@ -70,8 +95,8 @@ namespace EcoMinecarts.Editor
                     throw new Exception(root.name + ": rider attachment or exit missing");
                 if ((int)seat.overrideAvatarState != 3 || !seat.name.StartsWith("PassengerSeat")) continue;
                 var p = seat.transform.localPosition;
-                if (Mathf.Abs(p.y + SeatedHipHeight - Surface(root, seat)) > .002f)
-                    throw new Exception(root.name + ": seated hip does not meet cushion " + seat.name);
+                if (Mathf.Abs(p.y + SeatedHipHeight - Lift(root) - Surface(root, seat)) > .002f)
+                    throw new Exception(root.name + ": seated attachment does not match requested lift " + seat.name);
                 var direction = root.name == "HeritageTramObject" && p.z < 0 ? Vector3.back : Vector3.forward;
                 if (Vector3.Dot(seat.transform.localRotation * Vector3.forward, direction) < .999f)
                     throw new Exception(root.name + ": passenger faces into backrest " + seat.name);

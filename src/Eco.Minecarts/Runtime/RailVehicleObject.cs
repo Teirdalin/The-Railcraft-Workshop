@@ -5,6 +5,7 @@ namespace Eco.Minecarts.Runtime;
 
 // Shared network ownership and rail-pose contract for carts and locomotives.
 // Existing concrete saved object names remain unchanged.
+[RequireComponent(typeof(RailVehicleAccessComponent))]
 public abstract class RailVehicleObject : PhysicsWorldObject
 {
     public virtual Eco.Minecarts.Physics.RailVehicleSpec RailSpec => Eco.Minecarts.Physics.RailVehicleSpec.Minecart;
@@ -12,6 +13,7 @@ public abstract class RailVehicleObject : PhysicsWorldObject
     public virtual double RailMassKg => 280;
     public virtual int DriverPriority => 0;
     public virtual Vector3 ContactHalfSize => new(.40f, .40f, .80f);
+    internal bool ServerOnlyPhysics => !this.RailSpec.Pullable && !this.RailSpec.HumanPowered;
     protected override void CreateEntity() => this.netEntity = new MinecartNetPhysicsEntity(this.GetType().Name, this);
     internal void SetRailGuidance(bool active) => ((MinecartNetPhysicsEntity)this.netEntity).SetGuided(active);
     internal void PublishRailPose(Vector3 velocity) => ((MinecartNetPhysicsEntity)this.netEntity).PublishGuidedPose(velocity);

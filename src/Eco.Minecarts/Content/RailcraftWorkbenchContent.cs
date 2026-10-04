@@ -9,11 +9,14 @@ using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Skills;
 using Eco.Gameplay.Modules;
+using Eco.Gameplay.Minimap;
 using Eco.Shared.Networking;
 using Eco.Shared.Localization;
 using Eco.Shared.Serialization;
+using Eco.Shared.Items;
 
 [Serialized,RequireComponent(typeof(OnOffComponent)),RequireComponent(typeof(PropertyAuthComponent)),
+ RequireComponent(typeof(MinimapComponent)),
  RequireComponent(typeof(LinkComponent)),RequireComponent(typeof(CraftingComponent)),
  RequireComponent(typeof(OccupancyRequirementComponent)),RequireComponent(typeof(PluginModulesComponent)),
  RequireComponent(typeof(ForSaleComponent)),Tag("Usable")]
@@ -21,8 +24,15 @@ public sealed class RailcraftWorkbenchObject:WorldObject,IRepresentsItem
 {
     public Type RepresentedItemType=>typeof(RailcraftWorkbenchItem);
     public override LocString DisplayName=>Localizer.DoStr("Railcraft Workbench");
+    public override TableTextureMode TableTexture=>TableTextureMode.Wood;
+    protected override void Initialize()
+    {
+        base.Initialize();
+        GetComponent<MinimapComponent>().SetCategory(Localizer.DoStr("Crafting"));
+    }
     static RailcraftWorkbenchObject()=>AddOccupancy<RailcraftWorkbenchObject>(
-        Enumerable.Range(0,2).SelectMany(x=>Enumerable.Range(0,2).Select(y=>new BlockOccupancy(new(x,y,0),typeof(BuildingWorldObjectBlock)))).ToList());
+        // Match vanilla crafting tables: reserve space without connecting wall meshes.
+        Enumerable.Range(0,2).SelectMany(x=>Enumerable.Range(0,2).Select(y=>new BlockOccupancy(new(x,y,0)))).ToList());
 }
 [Serialized,LocDisplayName("Railcraft Workbench"),
  LocDescription("A dedicated workbench for rails, supports, minecarts, trains and roller coaster equipment. Connect nearby storage to supply crafting materials."),

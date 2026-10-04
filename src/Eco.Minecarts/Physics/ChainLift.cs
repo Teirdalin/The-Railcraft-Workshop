@@ -4,7 +4,10 @@ public static class ChainLift
 {
     public static float SpeedMultiplier(float value) => float.IsFinite(value) ? Math.Clamp(value,.25f,3f) : 1f;
     public static float GridDemand(int blocks,float multiplier) => Math.Max(0,blocks)*2f*SpeedMultiplier(multiplier);
-    public static double TargetSpeed(float multiplier) => .5*(float.IsFinite(multiplier) ? Math.Clamp(multiplier,0,3) : 0);
+    // Coaster lifts need brisk dispatch between tall elements; ordinary minecart
+    // chain rails retain their existing walking-speed target.
+    public static double TargetSpeed(float multiplier, bool coaster = false) => (coaster ? 1d : .5d)
+        * (float.IsFinite(multiplier) ? Math.Clamp(multiplier,0,3) : 0);
     // All drives on a grid use requested (not already throttled) demand for a
     // stable proportional share. Quarter-speed steps match the user controls.
     public static float SupportedMultiplier(float requested, float totalRequestedWatts, float supply, float otherDemand)

@@ -155,9 +155,9 @@ namespace EcoMinecarts.Editor
             color.color = gradient;
             var path = Root + "/Materials/MAT_TrainExhaust.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (material == null) { material = new Material(Shader.Find("Legacy Shaders/Particles/Alpha Blended")); AssetDatabase.CreateAsset(material, path); }
+            if (material == null) { material = new Material(Shader.Find(RailWorldMaterialBuilder.ParticleShader)); AssetDatabase.CreateAsset(material, path); }
             material.mainTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(Root + "/Materials/BrakeSpark.asset");
-            material.SetColor("_TintColor", Color.white);
+            RailWorldMaterialBuilder.Particle(material, false);
             particles.GetComponent<ParticleSystemRenderer>().sharedMaterial = material;
             // Same native operating callbacks found in the installed PoweredCart.
             UnityEventTools.AddPersistentListener(vehicle.OnEnableOperating, particles.Play);

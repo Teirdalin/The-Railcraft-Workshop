@@ -146,24 +146,24 @@ namespace EcoMinecarts.Editor
             Pipe(body,"Bell spindle",bell,bell+Vector3.up*.08f,.015f,brass);
             var cab=root.transform.Find("CabFittings");var deck=cab.Find("Cab floor");var floor=deck.localPosition.y+deck.localScale.y/2;
             var w=deck.localScale.x;var zc=deck.localPosition.z;var d=deck.localScale.z;
-            Hide(nodes,"Cab roof");ArchedRoof(roof,"Arched locomotive roof",new Vector3(0,floor+2.10f,zc),w+.18f,d+.15f,.13f,dark);
+            Hide(nodes,"Cab roof");ArchedRoof(roof,"Arched locomotive roof",new Vector3(0,floor+2.10f+RailRiderFit.RiderLift,zc),w+.18f,d+.15f,.13f,dark);
             foreach(var side in new[]{-1,1}){
-                Box(body,"Cab rear corner casing",new Vector3(side*(w/2-.045f),floor+1.38f,zc-d/2),new Vector3(.095f,1.37f,.065f),paint);
+                Box(body,"Cab rear corner casing",new Vector3(side*(w/2-.045f),floor+1.38f+RailRiderFit.RiderLift/2,zc-d/2),new Vector3(.095f,1.37f+RailRiderFit.RiderLift,.065f),paint);
                 Box(body,"Rear window sill",new Vector3(side*w*.25f,floor+.86f,zc-d/2),new Vector3(w*.46f,.065f,.075f),brass);
-                Box(body,"Rear window header",new Vector3(side*w*.25f,floor+1.98f,zc-d/2),new Vector3(w*.46f,.08f,.065f),paint);
+                Box(body,"Rear window header",new Vector3(side*w*.25f,floor+1.98f+RailRiderFit.RiderLift,zc-d/2),new Vector3(w*.46f,.08f,.065f),paint);
                 Box(body,"Rear panel lining",new Vector3(side*w*.27f,floor+.43f,zc-d/2-.026f),new Vector3(w*.38f,.019f,.012f),brass);
                 Pipe(body,"Cab grab rail",new Vector3(side*(w/2+.018f),floor+.71f,zc+d/2),new Vector3(side*(w/2+.018f),floor+1.40f,zc+d/2),.014f,brass);
                 foreach(var y in new[]{floor+.71f,floor+1.40f})
                     Pipe(body,"Grab rail bracket",new Vector3(side*(w/2-.025f),y,zc+d/2),new Vector3(side*(w/2+.018f),y,zc+d/2),.018f,steel);
-                Box(roof,"Rain gutter",new Vector3(side*(w/2+.09f),floor+2.105f,zc),new Vector3(.035f,.037f,d+.18f),brass);
+                Box(roof,"Rain gutter",new Vector3(side*(w/2+.09f),floor+2.105f+RailRiderFit.RiderLift,zc),new Vector3(.035f,.037f,d+.18f),brass);
             }
-            Box(body,"Rear centre mullion",new Vector3(0,floor+1.43f,zc-d/2),new Vector3(.047f,1.12f,.055f),paint);
+            Box(body,"Rear centre mullion",new Vector3(0,floor+1.43f+RailRiderFit.RiderLift/2,zc-d/2),new Vector3(.047f,1.12f+RailRiderFit.RiderLift,.055f),paint);
             var cabFront=zc+d/2+.017f;
             SoftBox(body,"Cab front apron",new Vector3(0,floor+.565f,cabFront),new Vector3(w-.045f,1.05f,.055f),.018f,paint);
             Box(body,"Front window sill",new Vector3(0,floor+1.285f,cabFront),new Vector3(w,.045f,.065f),brass);
             foreach(var x in new[]{-w/2+.022f,0f,w/2-.022f})
-                Box(body,"Front window mullion",new Vector3(x,floor+1.685f,cabFront),new Vector3(.045f,.78f,.055f),paint);
-            Box(body,"Front window header",new Vector3(0,floor+2.045f,cabFront),new Vector3(w,.06f,.065f),paint);
+                Box(body,"Front window mullion",new Vector3(x,floor+1.685f+RailRiderFit.RiderLift/2,cabFront),new Vector3(.045f,.78f+RailRiderFit.RiderLift,.055f),paint);
+            Box(body,"Front window header",new Vector3(0,floor+2.045f+RailRiderFit.RiderLift,cabFront),new Vector3(w,.06f,.065f),paint);
             var firebox=new Vector3(0,floor+.25f,zc+d/2-.075f);
             SoftBox(body,"Firebox door frame",firebox,new Vector3(.29f,.25f,.042f),.03f,dark);
             Pin(body,"Firebox latch",firebox+new Vector3(.08f,0,-.027f),.025f,.023f,brass,Quaternion.Euler(90,0,0));

@@ -1,0 +1,20 @@
+{
+  "version": "0.1.0",
+  "status": "prerelease",
+  "ecoVersion": "0.14.1.1-beta-release-1079",
+  "asset": "Railcraft-0-1-0.zip",
+  "sha256": "D86048465178D01B08604B422C24FAA8BFBC02C697951F3BCDDBC99A4C334F36",
+  "files": [
+    {
+      "file": "Eco.Minecarts.dll",
+      "sha256": "39DBEB850B5CB4CAB4288149E4CF0643CDF48FDEC35356BD469496254AEE614C"
+    },
+    {
+      "file": "EcoMinecarts.unity3d",
+      "sha256": "D5E682078D8B04D53B2A385B355765B298753ED7E6C60ACFD911F72FC3A59512"
+    }
+  ],
+  "verifiedBlockDefinitions": 568,
+  "liveGameplayVerified": false,
+  "linuxStartupIssueResolved": false
+}

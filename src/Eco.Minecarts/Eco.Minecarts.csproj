@@ -14,6 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Native ControllerHashSet exposes this interface; Eco supplies it at runtime. -->
+    <PackageReference Include="NetFabric.Hyperlinq.Abstractions" Version="1.3.0" PrivateAssets="all" ExcludeAssets="runtime" />
     <PackageReference Include="Eco.ReferenceAssemblies"
                       Version="0.14.1.1-beta-release-1079"
                       PrivateAssets="all"

@@ -17,7 +17,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, LocDisplayName("Rail Chain Drive")]
-[LocDescription("Place beside chain track and supply mechanical power. At 1x, requires 2 W per connected block and lifts at up to 0.5 m/s. Set a maximum speed from 0.25x to 3x. The drive automatically slows to available power and recovers toward that maximum when supply returns. Below the power needed for 0.25x it stops. Heavy loads move more slowly. Power loss releases the chain. Use the cart handbrake to prevent rollback.")]
+[LocDescription("Place beside chain track and supply mechanical power. At 1x, requires 2 W per connected block and lifts minecarts at up to 0.5 m/s or coaster carts at up to 1.0 m/s. Set a maximum speed from 0.25x to 3x. The drive automatically slows to available power and recovers toward that maximum when supply returns. Below the power needed for 0.25x it stops. Heavy loads move more slowly. Power loss releases the chain. Use the cart handbrake to prevent rollback.")]
 [Weight(12000)]
 public sealed class MinecartChainDriveItem : WorldObjectItem<MinecartChainDriveObject>, IPersistentData
 {
@@ -49,6 +49,7 @@ public sealed class MinecartChainDriveObject : WorldObject, IRepresentsItem
     // Eco grid cost is a gameplay balance value. Preserve the established
     // lifting simulation budget when reducing that cost, including load sharing.
     private const float LiftSimulationWattsPerBlock = 25;
+    private const float CoasterLiftSimulationWattsPerBlock = 100;
     private static readonly ConcurrentDictionary<int, MinecartChainDriveObject> Drives = new();
     internal static IEnumerable<MinecartChainDriveObject> ActiveDrives => Drives.Values.Where(d=>!d.IsDestroyed);
     private readonly object gate = new();
@@ -135,7 +136,25 @@ public sealed class MinecartChainDriveObject : WorldObject, IRepresentsItem
     }
 
     internal static double PowerFor(RailCell cell, int cartId) => LiftFor(cell,cartId).Watts;
-    internal static (double Watts,float Multiplier) LiftFor(RailCell cell, int cartId)
+    // Inspection must not call LiftFor: that registers a cart and divides the
+    // available traction between consumers. Match its first-drive ownership.
+    internal static Dictionary<RailCell, bool> ReadPowerIndicators()
+    {
+        var result = new Dictionary<RailCell, bool>();
+        foreach (var drive in Drives.Values.OrderBy(d => d.ID))
+        {
+            lock (drive.gate)
+            {
+                if (drive.IsDestroyed) continue;
+                var powered = drive.running && drive.Enabled && drive.HasMechanicalPower
+                    && drive.GetComponent<ChainDriveSpeedComponent>().EffectiveSpeedMultiplier > 0;
+                foreach (var cell in drive.cells) result.TryAdd(cell, powered);
+            }
+        }
+        return result;
+    }
+    internal static (double Watts,float Multiplier) LiftFor(RailCell cell, int cartId) => LiftFor(cell,cartId,false);
+    internal static (double Watts,float Multiplier) LiftFor(RailCell cell, int cartId, bool coaster)
     {
         // One drive owns a run; parallel drives cannot accidentally multiply free traction.
         foreach (var drive in Drives.Values.OrderBy(d => d.ID))
@@ -149,7 +168,8 @@ public sealed class MinecartChainDriveObject : WorldObject, IRepresentsItem
                 var now = DateTime.UtcNow;
                 foreach (var stale in drive.carts.Where(x => (now - x.Value).TotalSeconds > 1).Select(x => x.Key).ToArray()) drive.carts.Remove(stale);
                 drive.carts[cartId] = now;
-                return (drive.cells.Count * LiftSimulationWattsPerBlock * multiplier / drive.carts.Count,multiplier);
+                var wattsPerBlock=coaster ? CoasterLiftSimulationWattsPerBlock : LiftSimulationWattsPerBlock;
+                return (drive.cells.Count * wattsPerBlock * multiplier / drive.carts.Count,multiplier);
             }
         }
         return (0,1);

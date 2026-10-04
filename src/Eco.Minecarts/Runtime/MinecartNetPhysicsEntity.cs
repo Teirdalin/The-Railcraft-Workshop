@@ -3,12 +3,15 @@ using Eco.Shared.Serialization;
 
 namespace Eco.Minecarts.Runtime;
 
-/// <summary>Native client physics off-track/while pulled; authoritative server guidance on rails.</summary>
+/// <summary>Server poses for rail-only stock; native physics remains available for hand-operated carts.</summary>
 internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 {
     private readonly RailVehicleObject? cart;
     public MinecartNetPhysicsEntity(string type, INetObject owner) : base(type, owner)
-        => this.cart = owner as RailVehicleObject;
+    {
+        this.cart = owner as RailVehicleObject;
+        this.guided = this.cart?.ServerOnlyPhysics == true;
+    }
     private readonly object ownershipGate = new();
     private bool guided;
     private bool handoffPending;
@@ -17,10 +20,21 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
     private float clockBase;
     private float? lastNativePacketTime;
 
+    private void CaptureGuidedPose()
+    {
+        if (this.cart == null) return;
+        // A guided WorldObject moves on the server without SyncPositionAndRotation's
+        // forced client snap. NetPhysicsEntity sends its own cached transform, so
+        // refresh that cache for distant viewers before publishing the keyframe.
+        this.Position = this.cart.Position;
+        this.Rotation = this.cart.Rotation;
+    }
+
     public void SetGuided(bool value)
     {
         lock (this.ownershipGate)
         {
+            value |= this.cart?.ServerOnlyPhysics == true;
             // VehicleComponent assigns the mounted player as Controller even
             // when our guided flag was already true. Revoke that reassignment:
             // otherwise IsUpdated suppresses updates to the driver while
@@ -32,6 +46,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
             if (value)
             {
                 this.SetPhysicsController(null!, () => false);
+                this.CaptureGuidedPose();
                 this.guidedKeyframeTime = this.clockBase + (float)(Eco.Shared.Time.TimeUtil.Seconds - this.clockOrigin);
                 this.MarkPoseUpdated();
             }
@@ -44,6 +59,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
         {
             if (this.guided && this.Controller != null)
                 this.SetPhysicsController(null!, () => false);
+            this.CaptureGuidedPose();
             this.Velocity = velocity;
             this.guidedKeyframeTime = this.clockBase + (float)(Eco.Shared.Time.TimeUtil.Seconds - this.clockOrigin);
             this.MarkPoseUpdated();
@@ -54,10 +70,11 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
     {
         lock (this.ownershipGate)
         {
-            this.guided = false;
+            this.guided = this.cart?.ServerOnlyPhysics == true;
             this.SetPhysicsController(null!);
             // SetPhysicsController(null) may clear velocity. Restore it AFTER
             // ownership changes, and retain the guided clock until a native packet.
+            this.CaptureGuidedPose();
             this.Velocity = velocity;
             this.guidedKeyframeTime = this.clockBase + (float)(Eco.Shared.Time.TimeUtil.Seconds - this.clockOrigin);
             this.handoffPending = true;
@@ -69,7 +86,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
     {
         lock (this.ownershipGate)
         {
-            base.SendUpdate(data, viewer);
+            this.SendPose(data, viewer, initial: false);
             if (this.guided || this.handoffPending) data["time"] = this.guidedKeyframeTime;
         }
     }
@@ -78,23 +95,54 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
     {
         lock (this.ownershipGate)
         {
-            base.SendInitialState(data, viewer);
+            this.SendPose(data, viewer, initial: true);
             if (this.guided || this.handoffPending) data["time"] = this.guidedKeyframeTime;
         }
+    }
+
+    private void SendPose(BSONObject data, INetObjectViewer viewer, bool initial)
+    {
+        if (this.cart?.ServerOnlyPhysics != true)
+        {
+            if (initial) base.SendInitialState(data, viewer);
+            else base.SendUpdate(data, viewer);
+            return;
+        }
+        // Native SyncPhysics.ReceiveUpdate makes the body dynamic whenever
+        // TryGetVector3("v") succeeds, regardless of the prefab's kinematic flag.
+        // Omit the field entirely: encoded null decodes to a BSON null VALUE,
+        // which still passes TryGetValue. Keep every other native payload field.
+        var packet = BSONObject.New;
+        try
+        {
+            if (initial) base.SendInitialState(packet, viewer);
+            else base.SendUpdate(packet, viewer);
+            foreach (var entry in packet.ToArray())
+            {
+                if (entry.Key == "v") continue;
+                data[entry.Key] = entry.Value;
+                packet[entry.Key] = null; // Transfer pooled-value ownership.
+            }
+        }
+        finally { packet.Recycle(); }
     }
 
     public override bool IsRelevant(INetObjectViewer viewer)
     {
         lock (this.ownershipGate)
             return !this.guided ? base.IsRelevant(viewer) : viewer is IWorldObserver observer
-                && this.DistanceSquared(observer) <= observer.SimulationViewDistance.NotVisibleSq;
+                // A guided car is rendered for as long as its track chunk is
+                // visible. SimulationViewDistance can be shorter; cutting pose
+                // updates there leaves a still-rendered car frozen in midair
+                // while the track below remains visible.
+                && this.DistanceSquared(observer) <= observer.ChunkViewDistance.NotVisibleSq;
     }
 
     public override bool IsNotRelevant(INetObjectViewer viewer)
     {
         lock (this.ownershipGate)
             return !this.guided ? base.IsNotRelevant(viewer) : viewer is IWorldObserver observer
-                && this.DistanceSquared(observer) > observer.SimulationViewDistance.NotVisibleSq;
+                && this.DistanceSquared(observer) > observer.ChunkViewDistance.NotVisibleSq;
     }
 
     public override void ReceiveUpdate(BSONObject data)
@@ -103,7 +151,9 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
         double packetSeconds;
         lock (this.ownershipGate)
         {
-            if (this.guided) return;
+            // Rail-only stock never accepts a client rigidbody as its driver.
+            // Reject initial/late collision packets, including during placement.
+            if (this.guided || this.cart?.ServerOnlyPhysics == true) return;
             var lastReceived = this.LastReceivedUpdateTime;
             base.ReceiveUpdate(data);
             if (this.LastReceivedUpdateTime <= lastReceived || !data.TryGetFloatValue("time", out var nativeTime)) return;

@@ -9,7 +9,7 @@ using Eco.Shared.SharedTypes;
 using Eco.World.Blocks;
 using Eco.World.Water;
 [NextRamp(typeof(CoasterTrackChainGradeDownExitSection02FormType), 0)]
-public sealed class CoasterTrackChainGradeDownExitSection01FormType:FormType { public override string Name=>"CoasterTrackChainGradeDownExitSection01"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackChainGradeDownExitSection01")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackChainGradeDownExitSection01")); public override Type GroupType=>typeof(CoasterTrackChainGroup); public override int MinTier=>1; public override int SortOrder=>22; }
+public sealed class CoasterTrackChainGradeDownExitSection01FormType:FormType { public override string Name=>"CoasterTrackChainGradeDownExitSection01"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackChainGradeDownExitSection01")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackChainGradeDownExitSection01")); public override Type GroupType=>typeof(CoasterTrackChainGroup); public override int MinTier=>1; public override int SortOrder=>28; }
 [RotatedVariants(typeof(CoasterTrackChainGradeDownExitSection01R270Block),typeof(CoasterTrackChainGradeDownExitSection01Block),typeof(CoasterTrackChainGradeDownExitSection01R90Block),typeof(CoasterTrackChainGradeDownExitSection01R180Block)),IsForm(typeof(CoasterTrackChainGradeDownExitSection01FormType),typeof(CoasterTrackItem))]
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
 public sealed class CoasterTrackChainGradeDownExitSection01Block:CoasterTrackBlock,IWaterLoggedBlock{}

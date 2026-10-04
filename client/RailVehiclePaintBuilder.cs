@@ -65,6 +65,9 @@ namespace EcoMinecarts.Editor
             // Do not copy the Standard shader's entire property sheet: Unity 6
             // can retain its texture layout and silently reject new mask slots.
             var authored=new Material(shader);
+            // Distant Eco world objects use indirect instancing. Mark this as
+            // used when exporting so Unity retains the instanced shader path.
+            authored.enableInstancing=true;
             authored.name=key;
             authored.SetColor("_Color",source.GetColor("_Color"));
             foreach(var property in new[]{"_MainTex","_BumpMap"}){
@@ -107,7 +110,7 @@ namespace EcoMinecarts.Editor
                             var suffix=source.name.LastIndexOf("_Paint",StringComparison.Ordinal);
                             if(suffix>=0) source=AssetDatabase.LoadAssetAtPath<Material>(Root+"/Materials/"+source.name.Substring(0,suffix)+".mat")??source;
                             var region=Region(renderer);
-                            materials[i]=region==0?source:PaintMaterial(source,region);
+                            materials[i]=region==0 || RailWorldMaterialBuilder.NativeSurfaceTest ? source : PaintMaterial(source,region);
                             if(region!=0) count++;
                         }
                         renderer.sharedMaterials=materials;
@@ -133,6 +136,19 @@ namespace EcoMinecarts.Editor
             foreach(var prefab in prefabs.Where(p=>p.GetComponent<RCCCarControllerV2>()!=null))
                 MinecartIconBuilder.Render(prefab,prefab.name.Substring(0,prefab.name.Length-6));
             AssetDatabase.SaveAssets();MinecartAssetBuilder.BuildSavedClientBundle();
+        }
+        public static void RefreshDistanceMaterialsAndBuildBundle()
+        {
+            Debug.Log("ECO_DISTANCE_REFRESH_BEGIN");
+            var count=0;
+            foreach(var guid in AssetDatabase.FindAssets("t:Material",new[]{Root+"/Materials"})){
+                Debug.Log("ECO_DISTANCE_LOAD: "+AssetDatabase.GUIDToAssetPath(guid));
+                var material=AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if(material.shader.name!=ShaderName)continue;
+                material.enableInstancing=true;EditorUtility.SetDirty(material);count++;
+            }
+            Debug.Log("ECO_DISTANCE_SAVE: "+count);AssetDatabase.SaveAssets();Debug.Log("ECO_DISTANCE_EXPORT_BEGIN");MinecartAssetBuilder.BuildAuthoredClientBundle();
+            Debug.Log("ECO_DISTANCE_MATERIALS_OK: instancing enabled on "+count+" vehicle paint materials.");
         }
     }
 }

@@ -23,6 +23,19 @@ public sealed class RailCouplingComponent : WorldObjectComponent
             .OrderBy(c=>Vector3.DistanceSquared(c.Parent.Position,position)).FirstOrDefault();
     private static readonly ConcurrentDictionary<Guid, RailCouplingComponent> PersistentVehicles = new();
     private static readonly object LinkGate = new();
+    internal static RailCouplingComponent[] LiveVehicles=>Vehicles.Values.Where(c=>!c.Parent.IsDestroyed).ToArray();
+    internal bool RearAvailable=>!this.HasPartner(-1);
+    internal bool CoupleLoadedCart(RailCouplingComponent added)
+    {
+        lock(LinkGate)
+        {
+            if(Parent.IsDestroyed||added.Parent.IsDestroyed||!RearAvailable||added.Linked
+                ||!Vehicle.RailSpec.Coaster||!added.Vehicle.RailSpec.Coaster
+                ||Vector3.Distance(Connector(-1),added.Connector(1))>.3f)return false;
+            SetPartner(-1,added.Parent.ID,1);added.SetPartner(1,Parent.ID,-1);
+            return true;
+        }
+    }
     internal bool AwaitingLoad { get; private set; }
     internal bool LoadMembersReady => this.Group().All(node => node.Parent.Initialized &&
         new[] { -1, 1 }.All(end => !node.HasPartner(end) ||
@@ -184,12 +197,23 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     public void ToggleFromHandle(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
         => this.Toggle(player, trigger, target);
 
+    // The broad coaster end target supports both shove and coupling, so it
+    // cannot hide the low connector's action when viewed from above.
+    [Interaction(InteractionTrigger.LeftClick, "Couple / uncouple", modifier: InteractionModifier.Shift,
+        requiredEnvVars: new[] { "CoasterEnd" }, interactionDistance: 3, priority: 100,
+        authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
+    public void ToggleFromCoasterEnd(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
+    {
+        if (this.Vehicle.RailSpec.Coaster) this.Toggle(player, trigger, target);
+    }
+
     [Interaction(InteractionTrigger.LeftClick, "Couple / uncouple", modifier: InteractionModifier.Shift,
         requiredEnvVars: new[] { "RailCoupler" }, interactionDistance: 3, priority: 100,
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void Toggle(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
-        if ((!target.TryGetParameter("RailCoupler", out var raw) && !target.TryGetParameter("MinecartHandle", out raw))
+        if ((!target.TryGetParameter("RailCoupler", out var raw) && !target.TryGetParameter("MinecartHandle", out raw)
+            && !target.TryGetParameter("CoasterEnd", out raw))
             || !int.TryParse(raw?.ToString(), out var end) || Math.Abs(end) != 1
             || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess) || Vector3.Distance(player.User.Position, this.Connector(end)) > 3) return;
         RailCouplingComponent[] changed;
@@ -342,8 +366,11 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     private void FollowFreeBranch(RailCouplingComponent parent, RailCouplingComponent child, int end, int childEnd, Vector3 velocity)
     {
         var forward = parent.Parent.Rotation.RotateVector(Vector3.UnitZ);
-        var childForward = forward * -end * childEnd;
-        var position = parent.Connector(end) + forward * end * .10f - childForward * childEnd * child.Vehicle.CouplerOffset - parent.Parent.Rotation.RotateVector(new Vector3(0, .27f, 0));
+        var childForward = child.Parent.Rotation.RotateVector(Vector3.UnitZ);
+        if (childForward.LengthSquared() < .001f) childForward = forward * -end * childEnd;
+        var childUp = child.Parent.Rotation.RotateVector(Vector3.UnitY);
+        var position = parent.Connector(end) + forward * end * .10f
+            - childForward * childEnd * child.Vehicle.CouplerOffset - childUp * .27f;
         child.Parent.GetComponent<MinecartMotionComponent>().AcceptCoupledFreePose(position, childForward, velocity);
     }
 

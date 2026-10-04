@@ -56,6 +56,14 @@ public sealed record CoasterTerrainPath(string Key,string SourceKey,int Section,
             // either side distribute the pitch change (0, .5, 1), preserving
             // both tangent and height at each grid-face socket.
             var grade=prefix+"Grade";
+            // Compact Hermite transitions keep integer-height sockets so they
+            // fit the existing full grades and flats without half-height fillers.
+            Add(grade+"CompactUpEntry",1,1,t=>new(0,.15f+2*t*t-t*t*t,t-.5f),t=>new(0,4*t-3*t*t,1),chain,Key(grade+"Up",1),1);
+            Add(grade+"CompactUpExit",1,1,t=>new(0,.15f+t+t*t-t*t*t,t-.5f),t=>new(0,1+2*t-3*t*t,1),chain,Key(prefix+"Straight",1),1);
+            Add(grade+"CompactDownEntry",1,1,t=>new(0,1.15f-2*t*t+t*t*t,t-.5f),t=>new(0,-4*t+3*t*t,1),chain,Key(grade+"Down",1),-1);
+            Add(grade+"CompactDownExit",1,1,t=>new(0,1.15f-t-t*t+t*t*t,t-.5f),t=>new(0,-1-2*t+3*t*t,1),chain,Key(prefix+"Straight",1),0);
+            Add(grade+"CompactCrest",1,1,t=>new(0,.15f+t-t*t,t-.5f),t=>new(0,1-2*t,1),chain,Key(grade+"Down",1),-1);
+            Add(grade+"CompactDip",1,1,t=>new(0,1.15f-t+t*t,t-.5f),t=>new(0,-1+2*t,1),chain,Key(grade+"Up",1),1);
             Add(grade+"UpEntry",1,2,t=>new(0,.15f+.25f*t*t,t-.5f),t=>new(0,.5f*t,1),chain,Key(grade+"UpEntry",2),0);
             Add(grade+"UpEntry",2,2,t=>new(0,.15f+.25f+.5f*t+.25f*t*t,t-.5f),t=>new(0,.5f+.5f*t,1),chain,Key(grade+"Up",1),1);
             Add(grade+"Up",1,1,t=>new(0,.15f+t,t-.5f),t=>new(0,1,1),chain,Key(grade+"Up",1),1);

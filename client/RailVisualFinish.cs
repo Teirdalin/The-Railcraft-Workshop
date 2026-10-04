@@ -6,8 +6,7 @@ using UnityEngine;
 using Object=UnityEngine.Object;
 namespace EcoMinecarts.Editor
 {
-    // Render-only fittings. No collider, mount, network, occupancy or interaction
-    // component is created or edited by this pass.
+    // Finish geometry, rider fit and matching native collision platforms.
     public static class RailVisualFinish
     {
         static Transform Part(Transform parent,string name,PrimitiveType shape,Vector3 p,Vector3 size,Material m,Quaternion q)
@@ -66,6 +65,7 @@ namespace EcoMinecarts.Editor
             {
                 var path=AssetDatabase.GetAssetPath(prefab);var root=PrefabUtility.LoadPrefabContents(path);
                 try{
+                    RailRiderFit.Apply(root);
                     var previous=root.transform.Find("VisualFinish");if(previous!=null)Object.DestroyImmediate(previous.gameObject);
                     var detail=new GameObject("VisualFinish").transform;detail.SetParent(root.transform,false);
                     var nodes=root.GetComponentsInChildren<Transform>(true);
@@ -73,11 +73,15 @@ namespace EcoMinecarts.Editor
                     if(cab!=null){
                         var deck=cab.Find("Cab floor");var floor=deck.localPosition.y+deck.localScale.y/2;
                         var w=deck.localScale.x;var z=deck.localPosition.z;var d=deck.localScale.z;var front=z+d/2;
+                        // End the rear panel before the corner posts. Both used
+                        // to have coplanar front/back faces over the same strip.
+                        var panel=cab.Find("Cab rear panel");
+                        var panelSize=panel.localScale;panelSize.x=w-.065f;panel.localScale=panelSize;
                         foreach(var end in new[]{-1,1}){
                             // Recess below the running board instead of leaving
                             // its top five millimetres from the board surface.
                             Box(detail,"Cab outrigger",new Vector3(0,floor-.115f,z+end*d*.32f),new Vector3(w-.05f,.10f,.09f),paint);
-                            Box(detail,"Roof header",new Vector3(0,floor+2.055f,z+end*d/2),new Vector3(w,.06f,.055f),paint);
+                            Box(detail,"Roof header",new Vector3(0,floor+2.055f+RailRiderFit.RiderLift,z+end*d/2),new Vector3(w,.06f,.055f),paint);
                             foreach(var side in new[]{-1,1})
                                 Beam(detail,"Step hanger",new Vector3(side*w/2,floor-.04f,z+end*.13f),new Vector3(side*(w/2+.10f),floor-.20f,z+end*.13f),.035f,.04f,steel);
                         }
@@ -149,6 +153,8 @@ namespace EcoMinecarts.Editor
                     if(detail.childCount==0)Object.DestroyImmediate(detail.gameObject);
                     RailRiderFit.Apply(root);
                     RailVehicleDetail.Apply(root,materials);
+                    RailExteriorPlatformAssetBuilder.Apply(root);
+                    RailVehiclePhysicsAssetBuilder.Configure(root);
                     PrefabUtility.SaveAsPrefabAsset(root,path);
                 }finally{PrefabUtility.UnloadPrefabContents(root);}
             }

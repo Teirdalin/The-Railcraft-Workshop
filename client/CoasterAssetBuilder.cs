@@ -54,7 +54,7 @@ namespace EcoMinecarts.Editor
         public static IEnumerable<GameObject> Build(Path[] paths,IReadOnlyDictionary<string,Material> materials)
         {
             // Simple rails are hammer blocks; complex geometry is placed whole.
-            foreach(var path in paths.Where(p=>p.Key!="CoasterStraight").Concat(new[]{new Path{Key="CoasterStation",Points=Enumerable.Range(0,65).Select(i=>new Point{X=-1,Y=-.35f,Z=-2.5f+5*i/64f,UpY=1}).ToArray()}}))
+            foreach(var path in paths.Where(p=>p.Key!="CoasterStraight").Concat(new[]{new Path{Key="CoasterStation",Points=Enumerable.Range(0,65).Select(i=>new Point{X=-1,Y=-.35f,Z=-.5f+i/64f,UpY=1}).ToArray()}}))
             {
                 var root=new GameObject(path.Key+"Object");root.tag="ModObject";root.AddComponent<WorldObject>();root.AddComponent<HighlightableObject>();
                 var steel=materials["MAT_IronBare"];var paint=materials["MAT_IronPainted"];
@@ -77,12 +77,17 @@ namespace EcoMinecarts.Editor
                 }
                 if(path.Key=="CoasterStation")
                 {
-                    Box(root.transform,"Loading platform",new Vector3(0,-.30f,0),new Vector3(.9f,.10f,4),materials["MAT_WoodRail"],Quaternion.identity,true);
+                    Box(root.transform,"Loading platform",new Vector3(0,-.30f,0),new Vector3(.9f,.10f,1),materials["MAT_WoodRail"],Quaternion.identity,true);
                     foreach(var end in new[]{-1,1})
-                        Box(root.transform,"Station rail junction box",new Vector3(-1,-.52f,end*2.1f),new Vector3(.5f,.18f,.38f),paint,Quaternion.identity);
-                    Box(root.transform,"Station control cabinet",new Vector3(.2f,.15f,.8f),new Vector3(.4f,.8f,.3f),paint,Quaternion.identity,true);
-                    Box(root.transform,"Station sign post",new Vector3(.2f,.72f,.8f),new Vector3(.06f,.40f,.06f),steel,Quaternion.identity,true);
-                    Box(root.transform,"Station sign",new Vector3(.2f,1,.8f),new Vector3(.8f,.3f,.08f),paint,Quaternion.identity,true);
+                        Box(root.transform,"Station rail junction box",new Vector3(-1,-.52f,end*.3f),new Vector3(.5f,.18f,.25f),paint,Quaternion.identity);
+                    Box(root.transform,"Station control cabinet",new Vector3(.2f,.15f,0),new Vector3(.4f,.8f,.3f),paint,Quaternion.identity,true);
+                    Box(root.transform,"Station sign post",new Vector3(.2f,.72f,0),new Vector3(.06f,.40f,.06f),steel,Quaternion.identity,true);
+                    Box(root.transform,"Station sign",new Vector3(.2f,1,0),new Vector3(.8f,.3f,.08f),paint,Quaternion.identity,true);
+                    foreach(var collider in root.GetComponentsInChildren<Collider>())
+                    {
+                        var loading=collider.gameObject.AddComponent<SpecificInteractable>();
+                        loading.interactionTargetName="CoasterLoadingStation";loading.interactionTargetValue="";
+                    }
                 }
                 var saved=PrefabUtility.SaveAsPrefabAsset(root,"Assets/EcoMinecarts/Prefabs/"+root.name+".prefab");Object.DestroyImmediate(root);yield return saved;
             }

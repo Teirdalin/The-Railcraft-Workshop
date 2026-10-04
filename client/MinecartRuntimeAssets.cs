@@ -183,13 +183,13 @@ namespace EcoMinecarts.Editor
             world.OnFloatStateChanged = new[] { railEvents[0], railEvents[1], new ChangedFloatStateEvent() };
             UnityEventTools.AddPersistentListener(world.OnFloatStateChanged[2], Setter<float>(source, "volume"));
 
-            var shader = Shader.Find("Legacy Shaders/Particles/Additive");
-            if (shader == null) throw new InvalidOperationException("Missing built-in additive particle shader.");
+            var shader = Shader.Find(RailWorldMaterialBuilder.ParticleShader);
+            if (shader == null) throw new InvalidOperationException("Missing Eco curved particle shader.");
             var materialPath = Root + "/Materials/MAT_BrakeSparks.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             if (material == null) { material = new Material(shader); AssetDatabase.CreateAsset(material, materialPath); }
             material.shader = shader;
-            material.SetColor("_TintColor", Color.white);
+            RailWorldMaterialBuilder.Particle(material, true);
             // Explicit soft texture: a null MainTex fails our material audit and
             // gives a hard rectangular billboard rather than a spark streak.
             var texturePath = Root + "/Materials/BrakeSpark.asset";

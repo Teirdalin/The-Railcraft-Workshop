@@ -32,8 +32,8 @@ public sealed class MinecartChainItem : BlockItem<MinecartChainBlock>
 public sealed class MinecartChainRecipe : MinecartRailRecipeFamily
 {
     public MinecartChainRecipe() => this.Configure(
-        MinecartRailRecipes.Make<MinecartChainItem>("Powered Chain Rail", 2, 0, 4, hewnLogs: 2, woodenGears: 1),
-        "Powered Chain Rail", typeof(MinecartChainRecipe), 80, 1.5f);
+        MinecartRailRecipes.Make<MinecartChainItem>("Powered Chain Rail", 4, 0, 4, hewnLogs: 2, woodenGears: 1, fixedMaterials: true),
+        "Powered Chain Rail", typeof(MinecartChainRecipe), 100, 2);
 }
 
 public sealed class MinecartChainFormGroup : FormGroup

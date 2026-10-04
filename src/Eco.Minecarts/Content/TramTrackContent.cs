@@ -32,8 +32,8 @@ public sealed class TramTrackItem : BlockItem<TramTrackBlock>
 public sealed class TramTrackRecipe : MinecartRailRecipeFamily
 {
     public TramTrackRecipe() => this.Configure(
-        MinecartRailRecipes.Make<TramTrackItem>("Tram Rail", 2, 2, 4),
-        "Tram Rail", typeof(TramTrackRecipe), 60, 1);
+        MinecartRailRecipes.Make<TramTrackItem>("Tram Rail", 3, 2, 4, fixedMaterials: true),
+        "Tram Rail", typeof(TramTrackRecipe), 80, 1.25f);
 }
 
 [Serialized, Solid, Tag("Constructable"), Tag(BlockTags.PartialStack)]

@@ -8,7 +8,7 @@ using Eco.Shared.Serialization;
 namespace Eco.Minecarts.Runtime;
 
 [Serialized,NoIcon,LocDisplayName("Coaster Loading")]
-public sealed class CoasterStationComponent:WorldObjectComponent
+public sealed partial class CoasterStationComponent:WorldObjectComponent
 {
     private static readonly ConcurrentDictionary<RailCell,CoasterStationComponent> Stations=new();
     private readonly object gate=new();
@@ -34,17 +34,23 @@ public sealed class CoasterStationComponent:WorldObjectComponent
                 lock(station.gate)
                     if(station.dispatched.Contains(train.Leader().Parent.ObjectID))return false;
                 // Aim to stop inside the loading segment, not before its socket.
-                return speed*speed>2*deceleration*(distance+1.5);
+                return speed*speed>2*deceleration*(distance+rail.Profile.Length*.5);
             }
             distance+=rail.Profile.Length;
         }
         return false;
     }
-    public override void PostInitialize(){base.PostInitialize();Stations[Parent.GetComponent<CoasterRailComponent>().Rail.Cell]=this;}
+    public override void PostInitialize()
+    {
+        base.PostInitialize();
+        ((Eco.Mods.TechTree.CoasterStationObject)Parent).CompactLegacyFootprint();
+        Stations[Parent.GetComponent<CoasterRailComponent>().Rail.Cell]=this;
+    }
     internal (double Force,bool Brake) Control(RailCouplingComponent train,int facing,double speed)
     {
         lock(gate)
         {
+            if(loadingCart)return(0,true);
             var id=train.Leader().Parent.ObjectID;
             if(!arrivals.ContainsKey(id))
             {

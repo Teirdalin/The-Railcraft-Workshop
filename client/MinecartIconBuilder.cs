@@ -175,6 +175,9 @@ namespace EcoMinecarts.Editor
                 var importer = (TextureImporter)AssetImporter.GetAtPath(path);
                 importer.textureType = TextureImporterType.Sprite;
                 importer.spriteImportMode = SpriteImportMode.Single;
+                // Native Eco item icons: 128 px / 150 PPU. Our 256 px artwork
+                // retains its resolution but must have the same physical sprite size.
+                importer.spritePixelsPerUnit = 300;
                 importer.alphaIsTransparency = true;
                 importer.mipmapEnabled = false;
                 importer.maxTextureSize = 256;

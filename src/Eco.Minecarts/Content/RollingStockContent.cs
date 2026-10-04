@@ -109,6 +109,7 @@ public abstract class RollingStockRecipe<T> : RecipeFamily where T : Item, new()
         if (wood) ingredients.Add(new IngredientElement("HewnLog", cost.HewnLogs, skill));
         else ingredients.Add(new IngredientElement(steel ? typeof(SteelBarItem) : typeof(IronBarItem), cost.Metal, skill));
         if (cost.Stoves>0) ingredients.Add(new IngredientElement(typeof(CastIronStoveItem), cost.Stoves, true));
+        if (cost.Fabric>0) ingredients.Add(new IngredientElement("Fabric", cost.Fabric, skill));
         recipe.Init(spec.Key, Localizer.DoStr(spec.Name), ingredients, [], [new CraftingElement<T>()]);
         this.Recipes = [recipe]; this.ExperienceOnCraft = 4;
         this.LaborInCalories = CreateLaborInCaloriesValue(cost.Labor, skill);

@@ -37,7 +37,7 @@ public sealed class WoodenTrackRecipe : RecipeFamily
     {
         var recipe = new Recipe();
         recipe.Init("WoodenTrack", Localizer.DoStr("Wooden Rail"),
-            [new IngredientElement("Wood", 4, typeof(LoggingSkill))], [],
+            [new IngredientElement("Wood", 4, true)], [],
             [new CraftingElement<WoodenTrackItem>(4)]);
         this.Recipes = [recipe]; this.ExperienceOnCraft = 1;
         this.LaborInCalories = CreateLaborInCaloriesValue(80, typeof(LoggingSkill));

@@ -83,6 +83,7 @@ namespace EcoMinecarts.Editor
                         CoasterAssetBuilder.FitCart(root,model,spec,paint,iron);
                         foreach(var side in new[]{-1,1})
                             Hit(root.transform,"CoasterShoveInteraction",new Vector3(side*(width/2+.025f),.53f,0),new Vector3(.10f,.28f,.62f),"CoasterShove");
+                        ConfigureCoasterEndShove(root);
                     }
                 }
                 else Cargo(root, model, spec, width, wood, iron);
@@ -94,7 +95,9 @@ namespace EcoMinecarts.Editor
                 }
             }
             var controller = root.GetComponent<RCCCarControllerV2>();
-            controller.engineTorque = spec.Powered || spec.HumanPowered ? spec.TractionN : spec.Pullable ? 400 : 0;
+            // Pullable wood/iron carts use the same native walking drive as the
+            // base minecart. The old 400 Nm override stalled them on grades.
+            controller.engineTorque = spec.Powered || spec.HumanPowered ? spec.TractionN : spec.Pullable ? 14000f : 0;
             if(spec.HumanPowered) controller.footPoweredCart=true;
             controller.brake = spec.BrakeN;
             controller.maxspeed = spec.MaximumSpeed * 3.6f;
@@ -116,6 +119,7 @@ namespace EcoMinecarts.Editor
             if(!spec.Pullable) RailModelPolish.Axles(root, spec.Wheelbase, spec.HumanPowered ? .18f : .20f, iron, spec.HalfGauge);
             var body = root.GetComponent<Rigidbody>(); body.mass = spec.EmptyKg;
             if(spec.Powered) RailWheelSuspension.Configure(root,spec.EmptyKg,spec.EmptyKg+spec.CargoKg+500);
+            if(spec.Model=="Tram") ConfigureTramGuidedPhysics(root);
             body.centerOfMass = new Vector3(0, .34f, 0); controller.COM.localPosition = body.centerOfMass;
             var world = root.GetComponent<global::Vehicle>();
             var height = spec.Powered ? (large ? 2.9f : 2.7f) : spec.PassengerSeats > 0 ? 2.2f : large ? 2.4f : 1.8f;
@@ -343,6 +347,7 @@ namespace EcoMinecarts.Editor
                 node.transform.localRotation=Quaternion.Euler(0,end>0?180:0,0);
                 var text=node.AddComponent<TextMeshPro>();text.text="CITY LINE";text.fontSize=1.7f;text.alignment=TextAlignmentOptions.Center;
                 text.color=new Color(.95f,.89f,.68f);text.enableAutoSizing=true;text.fontSizeMin=1f;text.fontSizeMax=1.7f;
+                RailWorldMaterialBuilder.Text(text);
                 node.transform.localScale=Vector3.one*.55f;
                 return text;
             }
@@ -350,6 +355,27 @@ namespace EcoMinecarts.Editor
             vehicle.ExtraLicensePlates=new[]{Board("Rear destination text",-1)};
             foreach(var name in new[]{"SteamExhaust","AutomaticSteamExhaust"})
             {var exhaust=root.transform.Find(name);if(exhaust!=null)Object.DestroyImmediate(exhaust.gameObject);}
+        }
+        public static void ConfigureTramGuidedPhysics(GameObject root)
+        {
+            // Passenger-only trams never hand movement to the RCC wheel solver.
+            // Suspension and gravity must not push against the authoritative rail pose.
+            foreach(var wheel in root.GetComponentsInChildren<WheelCollider>(true))wheel.enabled=false;
+            var body=root.GetComponent<Rigidbody>();body.useGravity=false;body.isKinematic=true;
+            // SyncPhysics normally simulates nearby vehicles even for observers.
+            // A tram is always server-driven: use its kinematic network path at
+            // every viewing distance, keeping collision surfaces and boarding.
+            root.GetComponent<SyncPhysics>().distanceToIgnorePhysics=0;
+        }
+        public static void RefreshTramPhysicsAndBuildBundle()
+        {
+            var path=Root+"/Prefabs/HeritageTramObject.prefab";
+            var root=PrefabUtility.LoadPrefabContents(path);
+            try{ConfigureTramGuidedPhysics(root);PrefabUtility.SaveAsPrefabAsset(root,path);}
+            finally{PrefabUtility.UnloadPrefabContents(root);}
+            AssetDatabase.SaveAssets();
+            MinecartAssetBuilder.BuildSavedClientBundle();
+            Debug.Log("ECO_TRAM_GUIDED_PHYSICS_OK: native suspension disabled; floor/boarding colliders retained");
         }
         private static void Cargo(GameObject root, Transform model, Spec spec, float width, Material wood, Material iron)
         {
@@ -453,6 +479,13 @@ namespace EcoMinecarts.Editor
         }
         private static Transform Anchor(GameObject root, string name, Vector3 position)
         { var node = new GameObject(name).transform; node.SetParent(root.transform, false); node.localPosition = position; return node; }
+        internal static void ConfigureCoasterEndShove(GameObject root)
+        {
+            if(root.name!="RollerCoasterCartObject")return;
+            foreach(var old in root.transform.Cast<Transform>().Where(t=>t.name.StartsWith("CoasterEndShove")).ToArray())Object.DestroyImmediate(old.gameObject);
+            foreach(var end in new[]{-1,1})
+                Hit(root.transform,"CoasterEndShove"+end,new Vector3(0,.59f,end*.94f),new Vector3(1.02f,.38f,.10f),"CoasterEnd",end.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
         private static BoxCollider Hit(Transform root, string name, Vector3 position, Vector3 size, string target, string value = "")
         {
             var node = new GameObject(name); node.transform.SetParent(root, false); node.transform.localPosition = position;

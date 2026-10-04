@@ -19,17 +19,23 @@ using Eco.Shared.Utils;
 internal static class MinecartRailRecipes
 {
     public static Recipe Make<TItem>(string name, int ironBars, int woodBoards, int output = 1,
-        int hewnLogs = 0, int woodenGears = 0)
+        int hewnLogs = 0, int woodenGears = 0, bool fixedMaterials = false, int fabric = 0)
         where TItem : Item, new()
     {
         var recipe = new Recipe();
         var ingredients = new List<IngredientElement>
         {
-            new(typeof(IronBarItem), ironBars, typeof(BasicEngineeringSkill)),
+            fixedMaterials ? new IngredientElement(typeof(IronBarItem), ironBars, true)
+                : new IngredientElement(typeof(IronBarItem), ironBars, typeof(BasicEngineeringSkill)),
         };
-        if (woodBoards > 0) ingredients.Add(new IngredientElement("WoodBoard", woodBoards, typeof(BasicEngineeringSkill)));
-        if (hewnLogs > 0) ingredients.Add(new IngredientElement("HewnLog", hewnLogs, typeof(BasicEngineeringSkill)));
+        if (woodBoards > 0) ingredients.Add(fixedMaterials
+            ? new IngredientElement("WoodBoard", woodBoards, true)
+            : new IngredientElement("WoodBoard", woodBoards, typeof(BasicEngineeringSkill)));
+        if (hewnLogs > 0) ingredients.Add(fixedMaterials
+            ? new IngredientElement("HewnLog", hewnLogs, true)
+            : new IngredientElement("HewnLog", hewnLogs, typeof(BasicEngineeringSkill)));
         if (woodenGears > 0) ingredients.Add(new IngredientElement(typeof(WoodenGearItem), woodenGears, typeof(BasicEngineeringSkill)));
+        if (fabric > 0) ingredients.Add(new IngredientElement("Fabric", fabric, typeof(BasicEngineeringSkill)));
         recipe.Init(
             LegacyRecipeKey(name),
             Localizer.DoStr(name),

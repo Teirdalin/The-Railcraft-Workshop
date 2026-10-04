@@ -25,7 +25,7 @@ namespace EcoMinecarts.Editor
             var front=z+depth/2;
             var rear=z-depth/2;
             Box(fittings,"Cab floor",new Vector3(0,floor-.035f,z),new Vector3(width,.07f,depth),wood);
-            Box(fittings,"Cab rear panel",new Vector3(0,floor+.35f,rear),new Vector3(width,.7f,.045f),paint);
+            Box(fittings,"Cab rear panel",new Vector3(0,floor+.35f,rear),new Vector3(width-.065f,.7f,.045f),paint);
             // Side doors remain clear for walking in. Corner posts support a roof
             // with 2.08 m of genuine standing clearance above the collision deck.
             foreach(var x in new[]{-width/2,width/2})
@@ -128,7 +128,7 @@ namespace EcoMinecarts.Editor
             // Check clearance at the intended standing body's center, not just
             // that the old blocker was renamed or replaced by another solid box.
             var cushion=fittings.Find("Operator cushion");
-            if(Mathf.Abs(cushion.GetComponent<Renderer>().bounds.max.y-mount.seats[1].transform.position.y-.64f)>.002f)
+            if(Mathf.Abs(cushion.GetComponent<Renderer>().bounds.max.y-mount.seats[1].transform.position.y-RailRiderFit.SeatedHipHeight+RailRiderFit.RiderLift)>.002f)
                 throw new Exception("Operator cushion does not match seated hip datum: "+prefab.name);
             var bodyCenter=mount.seats[1].transform.position+Vector3.up*1.05f;
             foreach(var c in prefab.GetComponentsInChildren<BoxCollider>())

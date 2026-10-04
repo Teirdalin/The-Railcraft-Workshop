@@ -36,7 +36,7 @@ public sealed class CoasterTrackItem:BlockItem<CoasterTrackBlock>
 }
 [RequiresSkill(typeof(BasicEngineeringSkill),3)]
 public sealed class CoasterTrackRecipe:MinecartRailRecipeFamily
-{public CoasterTrackRecipe()=>Configure(MinecartRailRecipes.Make<CoasterTrackItem>("CoasterTrack",2,4,4),"Roller Coaster Rail",typeof(CoasterTrackRecipe),100,2);}
+{public CoasterTrackRecipe()=>Configure(MinecartRailRecipes.Make<CoasterTrackItem>("CoasterTrack",3,4,4,fixedMaterials:true),"Roller Coaster Rail",typeof(CoasterTrackRecipe),120,2.5f);}
 [Serialized,Solid,Tag("Constructable"),Tag(BlockTags.PartialStack)] public sealed class CoasterTrackStacked1Block:PickupableBlock,IWaterLoggedBlock{}
 [Serialized,Solid,Tag("Constructable"),Tag(BlockTags.PartialStack)] public sealed class CoasterTrackStacked2Block:PickupableBlock,IWaterLoggedBlock{}
 [Serialized,Solid,Tag("Constructable"),Tag(BlockTags.PartialStack)] public sealed class CoasterTrackStacked3Block:PickupableBlock,IWaterLoggedBlock{}
@@ -45,6 +45,12 @@ public static class CoasterTrackNames
 {
     public static string Group(string source)
     {
+        if(source.Contains("Compact",StringComparison.Ordinal))
+        {
+            var shape=source[(source.IndexOf("Compact",StringComparison.Ordinal)+7)..] switch
+            {"UpEntry"=>"Flat to Uphill", "UpExit"=>"Uphill to Flat", "DownEntry"=>"Flat to Downhill", "DownExit"=>"Downhill to Flat", "Crest"=>"Crest", "Dip"=>"Dip", _=>source};
+            return (source.Contains("Chain",StringComparison.Ordinal)?"Chain-Lift ":"")+"Single-Block "+shape;
+        }
         if(source.Contains("Grade",StringComparison.Ordinal))
         {
             var up=source.Contains("GradeUp",StringComparison.Ordinal);
@@ -62,6 +68,8 @@ public static class CoasterTrackNames
     public static string Description(string key)
     {
         var p=CoasterTerrainPath.Find(key);
+        if(p.SourceKey.Contains("Compact",StringComparison.Ordinal))
+            return "One-block curve with sockets matching 45° grades. Crest joins uphill to downhill; dip joins downhill to uphill. Flat transitions change height by one block and are tighter than the two-block transitions. Rotate with the hammer; keep the full cart envelope clear.";
         if(p.SourceKey.Contains("Grade",StringComparison.Ordinal))
             return p.Count==1?"45° coaster grade: rises or falls one block per cell. Use the matching eased transitions to join flat track. Building in a line retains the grade and changes height each cell."
                 :"Two-cell smooth pitch transition between flat rail and a 45° coaster grade. Build parts 1 and 2 in a line; the next shape and block height advance automatically. A downhill entry begins one block below the preceding flat rail.";

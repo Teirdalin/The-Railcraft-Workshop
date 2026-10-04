@@ -9,7 +9,7 @@ using Eco.Shared.SharedTypes;
 using Eco.World.Blocks;
 using Eco.World.Water;
 [NextRamp(typeof(CoasterTrackGradeDownSection01FormType), -1)]
-public sealed class CoasterTrackGradeDownEntrySection02FormType:FormType { public override string Name=>"CoasterTrackGradeDownEntrySection02"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackGradeDownEntrySection02")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackGradeDownEntrySection02")); public override Type GroupType=>typeof(CoasterTrackSteepGroup); public override int MinTier=>1; public override int SortOrder=>11; }
+public sealed class CoasterTrackGradeDownEntrySection02FormType:FormType { public override string Name=>"CoasterTrackGradeDownEntrySection02"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackGradeDownEntrySection02")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackGradeDownEntrySection02")); public override Type GroupType=>typeof(CoasterTrackSteepGroup); public override int MinTier=>1; public override int SortOrder=>17; }
 [RotatedVariants(typeof(CoasterTrackGradeDownEntrySection02R270Block),typeof(CoasterTrackGradeDownEntrySection02Block),typeof(CoasterTrackGradeDownEntrySection02R90Block),typeof(CoasterTrackGradeDownEntrySection02R180Block)),IsForm(typeof(CoasterTrackGradeDownEntrySection02FormType),typeof(CoasterTrackItem))]
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
 public sealed class CoasterTrackGradeDownEntrySection02Block:CoasterTrackBlock,IWaterLoggedBlock{}

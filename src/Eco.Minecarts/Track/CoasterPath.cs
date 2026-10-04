@@ -116,7 +116,36 @@ public sealed class CoasterPath
         // Keep the original key for placed right-hand loops and saved carts.
         new("CoasterLoop", t => Loop(t, 1)),
         new("CoasterLoopLeft", t => Loop(t, -1)),
+        Corkscrew("CoasterCorkscrewLeft", -1),
+        Corkscrew("CoasterCorkscrewRight", 1),
+        DescendingCoil("CoasterDescendingCoilLeft", -1),
+        DescendingCoil("CoasterDescendingCoilRight", 1),
     }.Select(GridSockets).ToArray();
+    private static CoasterPath DescendingCoil(string key,int side) => Section(key,t=>
+    {
+        // A full turn around a vertical axis, descending six blocks. Ease only
+        // the drop so both sockets finish level with the modular straight rail.
+        // The vehicle stays upright with a gentle inward bank, not a barrel roll.
+        var angle=2*MathF.PI*t;
+        var eased=t*t*t*(t*(6*t-15)+10);
+        var dropRate=-180*t*t*(1-t)*(1-t);
+        var tangent=Vector3.Normalize(new Vector3(side*6*MathF.PI*MathF.Sin(angle),dropRate,6*MathF.PI*MathF.Cos(angle)));
+        var up=Vector3.Normalize(Vector3.UnitY-tangent*Vector3.Dot(Vector3.UnitY,tangent));
+        var bank=-side*(MathF.PI/6)*MathF.Pow(MathF.Sin(MathF.PI*t),2);
+        up=Vector3.Transform(up,Quaternion.CreateFromAxisAngle(tangent,bank));
+        return (new Vector3(side*3*(1-MathF.Cos(angle)),.15f-6*eased,-2+3*MathF.Sin(angle)),up,tangent);
+    },false);
+    private static CoasterPath Corkscrew(string key,int side) => Section(key,t=>
+    {
+        // A horizontal helix with eased angular speed has straight, upright
+        // sockets. The radial frame performs exactly one roll, including at
+        // the apex; parallel transport alone would erase that inversion.
+        var angle=2*MathF.PI*t*t*t*(t*(6*t-15)+10);
+        var rate=60*MathF.PI*t*t*(1-t)*(1-t);
+        var sin=MathF.Sin(angle);var cos=MathF.Cos(angle);
+        return (new Vector3(side*2*sin,.15f+2*(1-cos),-2+12*t),
+            new Vector3(-side*sin,cos,0),new Vector3(side*2*cos*rate,2*sin*rate,12));
+    },false);
     // Whole sections and hammer rails share grid-face sockets, never integer
     // centre sockets. Half-cell straight leads also preserve endpoint frames.
     private static CoasterPath GridSockets(CoasterPath source)

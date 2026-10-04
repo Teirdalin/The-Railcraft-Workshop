@@ -90,8 +90,27 @@ namespace EcoMinecarts.Editor
             RemoveRetiredCoasterEntries();
             ExportCurrentLibrary();
         }
+        // Material-only refreshes preserve the already-reviewed library scene.
+        public static void BuildAuthoredClientBundle() => ExportCurrentLibrary();
+        public static void NormalizeIconScaleAndBuildBundle()
+        {
+            foreach(var guid in AssetDatabase.FindAssets("t:Texture2D",new[]{Root+"/Icons"})){
+                var path=AssetDatabase.GUIDToAssetPath(guid);
+                var texture=AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                var importer=AssetImporter.GetAtPath(path) as TextureImporter;
+                if(importer==null||texture==null||importer.textureType!=TextureImporterType.Sprite)continue;
+                var ppu=texture.width*150f/128f;
+                if(Mathf.Abs(importer.spritePixelsPerUnit-ppu)<.001f)continue;
+                importer.spritePixelsPerUnit=ppu;importer.SaveAndReimport();
+            }
+            BuildSavedClientBundle();
+            Debug.Log("ECO_ICON_SCALE_OK: native 128px/150PPU sprite dimensions retained at source resolution");
+        }
         private static void ExportCurrentLibrary()
         {
+            RailWorldMaterialBuilder.NormalizeMaterials();
+            RailBlockDistanceAppearance.Apply();
+            AssetDatabase.SaveAssets();
             ConfigureBundleDependencies();
             PlayerSettings.stripUnusedMeshComponents = false;
 
@@ -189,6 +208,7 @@ namespace EcoMinecarts.Editor
                 if (importer == null) continue;
                 importer.textureType = TextureImporterType.Sprite;
                 importer.spriteImportMode = SpriteImportMode.Single;
+                importer.spritePixelsPerUnit = 300;
                 importer.sRGBTexture = true;
                 importer.maxTextureSize = 512;
                 importer.SaveAndReimport();
@@ -292,7 +312,11 @@ namespace EcoMinecarts.Editor
 
             var sync = root.AddComponent<SyncPhysics>();
             sync.SyncPos = true;
-            sync.SyncVelocity = false;
+            // Rail guidance already publishes the tangent velocity in every
+            // keyframe. Distant kinematic clients need it to extrapolate between
+            // poses; position-only smoothing visibly trails a fast car above or
+            // beside its rail on slopes and bends.
+            sync.SyncVelocity = true;
             sync.UseBaseVelocity = false;
             sync.LimitVelocity = false;
             sync.VelocityLimit = 12f;
@@ -350,6 +374,11 @@ namespace EcoMinecarts.Editor
             controller.RearLeftWheelTransform = WheelPose("RL", controller.RearLeftWheelCollider);
             controller.RearRightWheelTransform = WheelPose("RR", controller.RearRightWheelCollider);
             controller.footPoweredCart = true;
+            // The native walking controller supplies the input, but the stock
+            // cart torque is calibrated for level ground. Keep the same walking
+            // speed ceiling while giving a loaded minecart enough wheel torque
+            // to start and continue on a rail ramp in either direction.
+            controller.engineTorque = 14000f;
             // Engine indexes both arrays by currentGear. Native carts serialize
             // a populated one-gear setup even with auto-generation enabled.
             controller.totalGears = 1;
@@ -660,7 +689,9 @@ namespace EcoMinecarts.Editor
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             var objects = new GameObject("Objects");
-            objects.AddComponent<ModkitPrefabContainer>().Prefabs = worldPrefabs.ToArray();
+            objects.AddComponent<ModkitPrefabContainer>().Prefabs = worldPrefabs
+                .Where(p => !p.name.StartsWith("RailChain") || !p.name.EndsWith("Indicator"))
+                .Concat(ChainRailIndicatorAssetBuilder.Build()).ToArray();
 
             var items = new GameObject("Items", typeof(RectTransform), typeof(Canvas));
             var itemTemplate = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/EcoModKit/Prefabs/DefaultItem.prefab");

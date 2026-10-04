@@ -32,8 +32,8 @@ public sealed class MinecartTrackItem : BlockItem<MinecartTrackBlock>
 public sealed class MinecartTrackRecipe : MinecartRailRecipeFamily
 {
     public MinecartTrackRecipe() => this.Configure(
-        MinecartRailRecipes.Make<MinecartTrackItem>("Standard Rail", 2, 0, 4, hewnLogs: 2),
-        "Standard Rail", typeof(MinecartTrackRecipe), 60, 1);
+        MinecartRailRecipes.Make<MinecartTrackItem>("Standard Rail", 3, 0, 4, hewnLogs: 2, fixedMaterials: true),
+        "Standard Rail", typeof(MinecartTrackRecipe), 80, 1.25f);
 }
 
 [Serialized, Solid, Tag("Constructable"), Tag(BlockTags.PartialStack)]

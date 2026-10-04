@@ -18,7 +18,7 @@ public abstract class CoasterRailObject : WorldObject,IRepresentsItem
     [Serialized] public bool EntrySnapOwned {get;set;}
     [Serialized] public bool ExitSnapOwned {get;set;}
     public System.Numerics.Vector3 RailOffset=>this is CoasterStationObject?-System.Numerics.Vector3.UnitX:CoasterPath.Find(PathKey).PlacementOffset;
-    public string PathKey=>GetType().Name.Replace("Object","")=="CoasterStation"?"CoasterStraight":GetType().Name.Replace("Object","");
+    public string PathKey=>this is CoasterStationObject?"CoasterTrackStraightSection01":GetType().Name.Replace("Object","");
     public Type RepresentedItemType=>GetType().Assembly.GetType("Eco.Mods.TechTree."+GetType().Name.Replace("Object","Item"))!;
     public override LocString DisplayName=>Localizer.DoStr(CoasterNames.Name(GetType().Name.Replace("Object","")));
     protected override void OnCreatePostInitialize()
@@ -54,10 +54,9 @@ public abstract class CoasterRailObject : WorldObject,IRepresentsItem
     }
     protected static void Occupy<T>(string key) where T:CoasterRailObject
     {
-        var path=CoasterPath.Find(key=="CoasterStation"?"CoasterStraight":key);
+        var path=CoasterPath.Find(key=="CoasterStation"?"CoasterTrackStraightSection01":key);
         var cells=new HashSet<Eco.Shared.Math.Vector3i>{Eco.Shared.Math.Vector3i.Zero};
         var placementOffset=key=="CoasterStation"?System.Numerics.Vector3.Zero:path.PlacementOffset;
-        if(key=="CoasterStation")for(var z=-2;z<=2;z++)cells.Add(new(0,0,z));
         for(var i=1;i<512;i++)
         {
             var p=path.Point(i/512f)+placementOffset-new System.Numerics.Vector3(0,.5f,0);
@@ -159,13 +158,13 @@ public abstract class CoasterRailRecipe<T>:MinecartRailRecipeFamily where T:Item
     protected CoasterRailRecipe()
     {
         var key=typeof(T).Name.Replace("Item","");
-        var path=CoasterPath.Find(key=="CoasterStation"?"CoasterStraight":key);
+        var path=CoasterPath.Find(key=="CoasterStation"?"CoasterTrackStraightSection01":key);
         // Complete geometry is priced by rail length, not by being a bend,
         // bank, hill or loop. The station adds its own boarding structure.
         var station=key=="CoasterStation";
-        var bars=Math.Max(1,(int)Math.Ceiling(path.Length/2))+(station?2:0);
+        var bars=Math.Max(1,(int)Math.Ceiling(path.Length*.75))+(station?2:0);
         var boards=(int)Math.Ceiling(path.Length)+(station?4:0);
-        var recipe=MinecartRailRecipes.Make<T>(key,bars,boards);
+        var recipe=MinecartRailRecipes.Make<T>(key,bars,boards,fixedMaterials:true);
         recipe.DisplayName=Localizer.DoStr(CoasterNames.Name(key));
         Configure(recipe,CoasterNames.Name(key),GetType(),bars*8,bars*.2f);
     }
@@ -173,10 +172,30 @@ public abstract class CoasterRailRecipe<T>:MinecartRailRecipeFamily where T:Item
 [Serialized] public sealed class RollerCoasterCartObject:RollingStockObject
 {static RollerCoasterCartObject()=>AddOccupancy<RollerCoasterCartObject>([]);}
 [Serialized,LocDisplayName("Roller Coaster Cart"),LocDescription("Two passenger seats, captive guide wheels and momentum-driven travel. Requires Roller Coaster Rail; gravity and powered chain lifts provide motion."),Weight(12000)]
-public sealed class RollerCoasterCartItem:RailModuleItem<RollerCoasterCartObject>{}
+public sealed class RollerCoasterCartItem:RailModuleItem<RollerCoasterCartObject>
+{
+    // The station's explicit placement validates track and clearance. Empty
+    // occupancy prevents the native floor test rejecting its own rail surface.
+    protected override OccupancyContext GetOccupancyContext=>new PositionsRequirementContext([]);
+    public override Task<bool> CanPlaceObject(Player player,System.Numerics.Vector3 pos,Eco.Shared.Math.Quaternion rotation)
+    {
+        if(TrackWorld.Capture(pos,rotation.RotateVector(System.Numerics.Vector3.UnitZ),coaster:true)!=null)
+            return Task.FromResult(true);
+        return Task.FromResult(new SideAttachedContext(Eco.Shared.Math.DirectionAxisFlags.None,WorldObject.GetOccupancyInfo(WorldObjectType))
+            .CanPlaceObject(player,this,pos,rotation));
+    }
+    [Eco.Gameplay.Interactions.Interactors.Interaction(Eco.Shared.SharedTypes.InteractionTrigger.RightClick,
+        "Place cart on station",requiredEnvVars:new[]{"CoasterLoadingStation"},interactionDistance:5,priority:100,
+        flags:Eco.Shared.SharedTypes.InteractionFlags.BlocksOtherInteraction)]
+    public async Task ApplyToStation(Player player,Eco.Shared.SharedTypes.InteractionTriggerInfo trigger,Eco.Shared.SharedTypes.InteractionTarget target)
+    {
+        if(target.NetObj is CoasterStationObject station)
+            await station.GetComponent<CoasterStationComponent>().PlaceCart(player,this);
+    }
+}
 [RequiresSkill(typeof(BasicEngineeringSkill),3)]
 public sealed class RollerCoasterCartRecipe:MinecartRailRecipeFamily
-{public RollerCoasterCartRecipe()=>Configure(MinecartRailRecipes.Make<RollerCoasterCartItem>("RollerCoasterCart",20,8),"Roller Coaster Cart",typeof(RollerCoasterCartRecipe),200,8);}
+{public RollerCoasterCartRecipe()=>Configure(MinecartRailRecipes.Make<RollerCoasterCartItem>("RollerCoasterCart",18,8,fabric:4),"Roller Coaster Cart",typeof(RollerCoasterCartRecipe),200,8);}
 
 
 
@@ -199,6 +218,35 @@ public sealed class RollerCoasterCartRecipe:MinecartRailRecipeFamily
 
 
 
-[Serialized,RequireComponent(typeof(TrainStationComponent)),RequireComponent(typeof(RailAutomationComponent)),RequireComponent(typeof(CoasterStationComponent))] public sealed class CoasterStationObject:CoasterRailObject {static CoasterStationObject()=>Occupy<CoasterStationObject>("CoasterStation");}
+[Serialized,RequireComponent(typeof(TrainStationComponent)),RequireComponent(typeof(RailAutomationComponent)),RequireComponent(typeof(CoasterStationComponent))]
+public sealed class CoasterStationObject:CoasterRailObject
+{
+    static CoasterStationObject()=>Occupy<CoasterStationObject>("CoasterStation");
+    [Serialized] public int StationFootprintVersion {get;set;}
+    protected override void OnCreatePreInitialize(){base.OnCreatePreInitialize();StationFootprintVersion=1;}
+    internal void CompactLegacyFootprint()
+    {
+        if(StationFootprintVersion>=1)return;
+        var forward=Rotation.RotateVector(System.Numerics.Vector3.UnitZ);
+        var turn=((int)Math.Round(Math.Atan2(forward.X,forward.Z)/(Math.PI/2))+4)%4;
+        var block=turn switch {1=>typeof(CoasterTrackStraightSection01R90Block),2=>typeof(CoasterTrackStraightSection01R180Block),3=>typeof(CoasterTrackStraightSection01R270Block),_=>typeof(CoasterTrackStraightSection01Block)};
+        // Old stations included four extra rail cells. Leave ordinary rails in
+        // those cells so shrinking a saved station does not drop existing carts
+        // or break its route. Never replace a player's later construction.
+        foreach(var z in new[]{-2,-1,1,2})
+        {
+            var rail=Position+Rotation.RotateVector(new System.Numerics.Vector3(-1,0,z));
+            var cell=new Eco.Shared.Math.Vector3i((int)MathF.Round(rail.X),(int)MathF.Round(rail.Y),(int)MathF.Round(rail.Z));
+            var existing=Eco.World.World.GetBlock(cell);
+            if(existing is EmptyBlock||existing is WorldObjectBlock own&&own.WorldObjectHandle.Id==ObjectID)
+                Eco.World.World.SetBlock(block,cell);
+            var platform=Position+Rotation.RotateVector(new System.Numerics.Vector3(0,0,z));
+            var platformCell=new Eco.Shared.Math.Vector3i((int)MathF.Round(platform.X),(int)MathF.Round(platform.Y),(int)MathF.Round(platform.Z));
+            if(Eco.World.World.GetBlock(platformCell) is WorldObjectBlock old&&old.WorldObjectHandle.Id==ObjectID)
+                Eco.World.World.DeleteBlock(platformCell);
+        }
+        StationFootprintVersion=1;SetDirty();
+    }
+}
 [Serialized,LocDisplayName("Roller Coaster Station"),Weight(12000),Ecopedia("Blocks","Building Materials",createAsSubPage:true),LocDescription("A loading platform with built-in coaster rail. Holds carts for boarding and dispatches them when its departure conditions are met. Connect Roller Coaster Rail to both ends.")] public sealed class CoasterStationItem:WorldObjectItem<CoasterStationObject>{public override Eco.Shared.Localization.LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterStation"));}
 [RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterStationRecipe:CoasterRailRecipe<CoasterStationItem>{}

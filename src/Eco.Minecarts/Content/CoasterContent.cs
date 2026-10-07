@@ -140,6 +140,16 @@ public static class CoasterSpecialPlacement
 }
 public static class CoasterNames
 {
+    public static string? ChoiceFamily(string key)=>key switch
+    {
+        "CoasterBendLeft" or "CoasterBendRight"=>"Bend",
+        "CoasterBankLeft" or "CoasterBankRight"=>"Bank",
+        "CoasterLoop" or "CoasterLoopLeft"=>"Loop",
+        _=>CoasterTrackNames.BlueprintShapeFamily(key)
+    };
+    public static string ChoiceDirection(string key)=>CoasterTrackNames.BlueprintShapeFamily(key)!=null
+        ? (key.Contains("Down",StringComparison.Ordinal)?"Downhill":"Uphill")
+        :key.EndsWith("Left",StringComparison.Ordinal)?"Left":"Right";
     public static string Name(string key)=>key switch
     {
         "CoasterStraight"=>"Roller Coaster Rail",
@@ -164,14 +174,14 @@ public abstract class CoasterRailRecipe<T>:MinecartRailRecipeFamily where T:Item
         var station=key=="CoasterStation";
         var bars=Math.Max(1,(int)Math.Ceiling(path.Length*.75))+(station?2:0);
         var boards=(int)Math.Ceiling(path.Length)+(station?4:0);
-        var recipe=MinecartRailRecipes.Make<T>(key,bars,boards,fixedMaterials:true);
+        var recipe=MinecartRailRecipes.Make<T>(key,bars,boards,fixedMaterials:true, skillType:typeof(IndustrySkill),metalType:typeof(SteelBarItem));
         recipe.DisplayName=Localizer.DoStr(CoasterNames.Name(key));
-        Configure(recipe,CoasterNames.Name(key),GetType(),bars*8,bars*.2f);
+        Configure(recipe,CoasterNames.Name(key),GetType(),bars*8,bars*.2f, skillType:typeof(IndustrySkill));
     }
 }
 [Serialized] public sealed class RollerCoasterCartObject:RollingStockObject
 {static RollerCoasterCartObject()=>AddOccupancy<RollerCoasterCartObject>([]);}
-[Serialized,LocDisplayName("Roller Coaster Cart"),LocDescription("Two passenger seats, captive guide wheels and momentum-driven travel. Requires Roller Coaster Rail; gravity and powered chain lifts provide motion."),Weight(12000)]
+[Serialized,LocDisplayName("Roller Coaster Cart"),LocDescription("Two passenger seats, captive guide wheels and momentum-driven travel. Requires Roller Coaster Rail; gravity and powered chain lifts provide motion. Crafted at the Electric Machinist Table using Industry."),Weight(12000)]
 public sealed class RollerCoasterCartItem:RailModuleItem<RollerCoasterCartObject>
 {
     // The station's explicit placement validates track and clearance. Empty
@@ -179,7 +189,7 @@ public sealed class RollerCoasterCartItem:RailModuleItem<RollerCoasterCartObject
     protected override OccupancyContext GetOccupancyContext=>new PositionsRequirementContext([]);
     public override Task<bool> CanPlaceObject(Player player,System.Numerics.Vector3 pos,Eco.Shared.Math.Quaternion rotation)
     {
-        if(TrackWorld.Capture(pos,rotation.RotateVector(System.Numerics.Vector3.UnitZ),coaster:true)!=null)
+        if(TrackWorld.Capture(pos,rotation.RotateVector(System.Numerics.Vector3.UnitZ),.5f,1.05f,coaster:true)!=null)
             return Task.FromResult(true);
         return Task.FromResult(new SideAttachedContext(Eco.Shared.Math.DirectionAxisFlags.None,WorldObject.GetOccupancyInfo(WorldObjectType))
             .CanPlaceObject(player,this,pos,rotation));
@@ -193,9 +203,17 @@ public sealed class RollerCoasterCartItem:RailModuleItem<RollerCoasterCartObject
             await station.GetComponent<CoasterStationComponent>().PlaceCart(player,this);
     }
 }
-[RequiresSkill(typeof(BasicEngineeringSkill),3)]
+[RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class RollerCoasterCartRecipe:MinecartRailRecipeFamily
-{public RollerCoasterCartRecipe()=>Configure(MinecartRailRecipes.Make<RollerCoasterCartItem>("RollerCoasterCart",18,8,fabric:4),"Roller Coaster Cart",typeof(RollerCoasterCartRecipe),200,8);}
+{
+    public RollerCoasterCartRecipe()
+    {
+        // Four fabric replace four of the former eighteen bars, one for one.
+        var recipe=MinecartRailRecipes.Make<RollerCoasterCartItem>("RollerCoasterCart",14,8,fabric:4,
+            skillType:typeof(IndustrySkill),metalType:typeof(SteelBarItem),steelGears:1,lubricant:1);
+        Configure(recipe,"Roller Coaster Cart",typeof(RollerCoasterCartRecipe),200,8,skillType:typeof(IndustrySkill));
+    }
+}
 
 
 
@@ -218,9 +236,12 @@ public sealed class RollerCoasterCartRecipe:MinecartRailRecipeFamily
 
 
 
-[Serialized,RequireComponent(typeof(TrainStationComponent)),RequireComponent(typeof(RailAutomationComponent)),RequireComponent(typeof(CoasterStationComponent))]
+[Serialized,RequireComponent(typeof(TrainStationComponent)),RequireComponent(typeof(RailAutomationComponent)),RequireComponent(typeof(CoasterStationComponent)),RequireComponent(typeof(CoasterBlueprintComponent))]
 public sealed class CoasterStationObject:CoasterRailObject
 {
+    public override void Use(Eco.Gameplay.Players.Player player, Eco.Shared.SharedTypes.InteractionTarget target,
+        Eco.Shared.SharedTypes.InteractionTriggerInfo triggerInfo, string ui="WorldObjectUI")
+    { GetComponent<CoasterBlueprintComponent>()?.SyncOnOpening(); base.Use(player,target,triggerInfo,ui); }
     static CoasterStationObject()=>Occupy<CoasterStationObject>("CoasterStation");
     [Serialized] public int StationFootprintVersion {get;set;}
     protected override void OnCreatePreInitialize(){base.OnCreatePreInitialize();StationFootprintVersion=1;}
@@ -249,4 +270,4 @@ public sealed class CoasterStationObject:CoasterRailObject
     }
 }
 [Serialized,LocDisplayName("Roller Coaster Station"),Weight(12000),Ecopedia("Blocks","Building Materials",createAsSubPage:true),LocDescription("A loading platform with built-in coaster rail. Holds carts for boarding and dispatches them when its departure conditions are met. Connect Roller Coaster Rail to both ends.")] public sealed class CoasterStationItem:WorldObjectItem<CoasterStationObject>{public override Eco.Shared.Localization.LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterStation"));}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class CoasterStationRecipe:CoasterRailRecipe<CoasterStationItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class CoasterStationRecipe:CoasterRailRecipe<CoasterStationItem>{}

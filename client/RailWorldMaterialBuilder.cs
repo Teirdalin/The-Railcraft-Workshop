@@ -15,8 +15,36 @@ namespace EcoMinecarts.Editor
         public static readonly bool NativeSurfaceTest = true;
         public const string SurfaceShader = "Curved/Standard";
         public const string ParticleShader = "Curved/Particles/Standard Surface";
-        public const string TextShader = "EcoMinecarts/Curved Destination SDF";
+        public const string TextShader = SurfaceShader;
         const string Root = "Assets/EcoMinecarts";
+
+        public static void RemoveVehicleTextForRecovery()
+        {
+            // The 0.1.0 client crash enters TMP_FontAsset.ReadFontAssetDefinition
+            // and FontEngine.GetFaceInfo during vehicle instantiation. Keep the
+            // boards but omit their bundled-font text until font loading is fixed.
+            var removed = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { Root + "/Prefabs" }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (prefab.GetComponent<Vehicle>() == null || prefab.GetComponentsInChildren<TMP_Text>(true).Length == 0) continue;
+                var root = PrefabUtility.LoadPrefabContents(path);
+                try
+                {
+                    var vehicle = root.GetComponent<Vehicle>();
+                    vehicle.LicensePlate = null; vehicle.ExtraLicensePlates = Array.Empty<TextMeshPro>();
+                    foreach (var text in root.GetComponentsInChildren<TMP_Text>(true))
+                    {
+                        UnityEngine.Object.DestroyImmediate(text.gameObject);
+                        removed++;
+                    }
+                    PrefabUtility.SaveAsPrefabAsset(root, path);
+                }
+                finally { PrefabUtility.UnloadPrefabContents(root); }
+            }
+            Debug.Log("RAIL_RECOVERY_TEXT_REMOVED: " + removed);
+        }
 
         public static void Particle(Material material, bool additive)
         {
@@ -40,9 +68,30 @@ namespace EcoMinecarts.Editor
             var path = Root + "/Materials/MAT_DestinationText.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null) { material = new Material(original); AssetDatabase.CreateAsset(material, path); }
-            material.shader = Shader.Find(TextShader) ?? throw new Exception("Missing curved destination shader");
-            material.DisableKeyword("NO_CURVE"); material.DisableKeyword("MINIMAP_NO_CURVE");
+            TextMaterial(material, text.font.atlasTexture);
             text.fontSharedMaterial = material;
+            EditorUtility.SetDirty(material);
+        }
+
+        public static void TextMaterial(Material material, Texture atlas)
+        {
+            material.shader = Shader.Find(TextShader) ?? throw new Exception("Missing native Curved/Standard text shader");
+            material.shaderKeywords = Array.Empty<string>();
+            material.SetTexture("_MainTex", atlas);
+            material.SetTextureScale("_MainTex", Vector2.one);
+            material.SetTextureOffset("_MainTex", Vector2.zero);
+            material.SetColor("_Color", new Color(.95f, .89f, .68f));
+            material.SetFloat("_Mode", 2); // Native Fade: the atlas supplies glyph coverage.
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_ZWrite", 0); material.SetFloat("_ZTest", (float)CompareFunction.LessEqual);
+            material.SetFloat("_Metallic", 0); material.SetFloat("_Glossiness", 0);
+            material.SetColor("_EmissionColor", Color.black);
+            material.EnableKeyword("_ALPHABLEND_ON");
+            material.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+            material.EnableKeyword("_GLOSSYREFLECTIONS_OFF");
+            material.SetOverrideTag("RenderType", "Transparent"); material.renderQueue = 3000;
+            material.enableInstancing = true;
             EditorUtility.SetDirty(material);
         }
 
@@ -52,8 +101,8 @@ namespace EcoMinecarts.Editor
             foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { Root }))
             {
                 var material = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
-                if (material.name == "MAT_DestinationText") continue;
-                if (material.name == "MAT_TrainExhaust" || material.name == "MAT_BrakeSparks")
+                if (material.name == "MAT_DestinationText") { TextMaterial(material, material.mainTexture); continue; }
+                if (material.name == "MAT_TrainExhaust" || material.name == "MAT_BrakeSparks" || material.name == "MAT_DriveStalledSmoke")
                 { Particle(material, material.name == "MAT_BrakeSparks"); continue; }
                 if (!NativeSurfaceTest && material.shader.name == RailVehiclePaintBuilder.ShaderName) continue;
                 material.shader = standard;
@@ -80,7 +129,7 @@ namespace EcoMinecarts.Editor
                 {
                     RailExpansionAssetBuilder.ConfigureCoasterEndShove(root);
                     RailRiderInteractionAssetBuilder.Configure(root,root.transform.Find("CabFittings")!=null);
-                    root.GetComponent<Vehicle>().AllVehicleColliders=root.GetComponentsInChildren<Collider>(true).Where(c=>c.enabled).ToArray();
+                    root.GetComponent<Vehicle>().AllVehicleColliders=root.GetComponentsInChildren<Collider>(true);
                     RailVehiclePhysicsAssetBuilder.Configure(root);
                     foreach (var text in root.GetComponentsInChildren<TMP_Text>(true)) Text(text);
                     PrefabUtility.SaveAsPrefabAsset(root, path);

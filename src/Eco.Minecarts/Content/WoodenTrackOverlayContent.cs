@@ -165,4 +165,3 @@ public sealed class WoodenTrackRampTop4270Block : Block, IRepresentsItem, IWater
 {
     public Type RepresentedItemType => typeof(WoodenTrackItem);
 }
-

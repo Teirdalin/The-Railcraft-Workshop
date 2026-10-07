@@ -10,11 +10,14 @@ internal static class RailInfrastructure
 {
     private static readonly ConcurrentDictionary<RailCell, WorldObject> WideTurns = new();
     private static readonly object BreakGate = new();
-    private static RailCell Cell(WorldObject obj) => new(obj.Position3i.X, obj.Position3i.Y, obj.Position3i.Z);
-    internal static void Register(WorldObject obj) => WideTurns[Cell(obj)] = obj;
-    internal static void Remove(WorldObject obj) => WideTurns.TryRemove(new KeyValuePair<RailCell,WorldObject>(Cell(obj),obj));
+    private static RailCell Cell(WorldObject obj) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Cell"); return new(obj.Position3i.X, obj.Position3i.Y, obj.Position3i.Z); }
+    internal static void Register(WorldObject obj) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Register"); WideTurns[Cell(obj)] = obj; RailSimulationFrame.Invalidate(); }
+    internal static void Remove(WorldObject obj)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Remove"); RailPowerConnectionComponent.RailRemoved(Cell(obj)); WideTurns.TryRemove(new KeyValuePair<RailCell,WorldObject>(Cell(obj),obj)); RailSimulationFrame.Invalidate(); }
     internal static VoxelRail? TryRead(RailCell cell)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/TryRead");
         if (!WideTurns.TryGetValue(cell, out var obj) || obj.IsDestroyed) return null;
         var forward = obj.Rotation.RotateVector(System.Numerics.Vector3.UnitZ);
         var turns = ((int)Math.Round(Math.Atan2(forward.X, forward.Z) / (Math.PI / 2)) + 4) % 4;
@@ -22,6 +25,7 @@ internal static class RailInfrastructure
     }
     internal static bool Supports(VoxelRail rail, double mass)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Supports");
         if (mass <= rail.Profile.MaximumSupportedKg) return true;
         lock (BreakGate)
         {

@@ -15,9 +15,10 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
     private readonly Dictionary<Guid,DateTime> arrivals=new();
     private readonly HashSet<Guid> dispatched=new();
     private readonly Dictionary<Guid,RailCouplingComponent> trains=new();
-    internal static CoasterStationComponent? At(RailCell cell)=>Stations.TryGetValue(cell,out var station)&&!station.Parent.IsDestroyed?station:null;
+    internal static CoasterStationComponent? At(RailCell cell){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/At"); return Stations.TryGetValue(cell,out var station)&&!station.Parent.IsDestroyed?station:null; }
     internal static bool ApproachBrake(VoxelRail rail,float t,double speed,RailCouplingComponent train)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/ApproachBrake");
         if(Math.Abs(speed)<.05)return false;
         var direction=speed<0?0:1;
         var distance=direction==0?t*rail.Profile.Length:(1-t)*rail.Profile.Length;
@@ -42,12 +43,14 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
     }
     public override void PostInitialize()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/PostInitialize", this.Parent);
         base.PostInitialize();
         ((Eco.Mods.TechTree.CoasterStationObject)Parent).CompactLegacyFootprint();
         Stations[Parent.GetComponent<CoasterRailComponent>().Rail.Cell]=this;
     }
     internal (double Force,bool Brake) Control(RailCouplingComponent train,int facing,double speed)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Control", this.Parent);
         lock(gate)
         {
             if(loadingCart)return(0,true);
@@ -71,6 +74,7 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
     }
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Tick", this.Parent);
         base.Tick(); lock(gate)
         {
             var cell=Parent.GetComponent<CoasterRailComponent>().Rail.Cell;
@@ -82,5 +86,6 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
                 }
         }
     }
-    public override void Destroy(){Stations.TryRemove(Parent.GetComponent<CoasterRailComponent>().Rail.Cell,out _);base.Destroy();}
+    public override void Destroy(){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Destroy", this.Parent);Stations.TryRemove(Parent.GetComponent<CoasterRailComponent>().Rail.Cell,out _);base.Destroy();}
 }

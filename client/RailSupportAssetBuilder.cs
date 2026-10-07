@@ -9,6 +9,77 @@ namespace EcoMinecarts.Editor
     public static class RailSupportAssetBuilder
     {
         const string Root="Assets/EcoMinecarts";
+        public static void RebuildSideLaddersAndExport()
+        {
+            Build();
+            AssetDatabase.SaveAssets();
+            MinecartAssetBuilder.BuildAuthoredClientBundle();
+            Debug.Log("RAIL_SUPPORT_SIDE_LADDERS_OK: rungs and native climb face on the +X side, clear side corridor, all rotated variants.");
+        }
+        // Native terrain climbing works on Block.IsLadder. Keep loose carried
+        // stacks ordinary blocks; every installed column variant is climbable.
+        public static void RefreshClimbing()
+        {
+            var set = AssetDatabase.LoadAssetAtPath<BlockSet>(Root + "/CoasterBlocks/RailSupports.asset");
+            if (set == null) throw new Exception("Rail support block set is missing");
+            int count = 0;
+            foreach (var block in set.Blocks)
+            {
+                block.IsLadder = !block.Name.Contains("Stacked");
+                if (block.IsLadder) {
+                    ConfigureClimbFacing(block);
+                    var collision=((CustomBuilder)block.Builder).usageCases[0].blockMeshLodGroup.Collider;
+                    if(!collision.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord0)) {
+                        collision.uv=collision.vertices.Select(v=>new Vector2(v.x,v.z)).ToArray();
+                        EditorUtility.SetDirty(collision);
+                    }
+                    count++;
+                }
+            }
+            EditorUtility.SetDirty(set);
+            Debug.Log("RAIL_SUPPORT_CLIMBING_OK: " + count + " installed support variants; rotation selects climb face; loose stacks excluded");
+        }
+        static void ConfigureClimbFacing(Block block)
+        {
+            // Eco reads the first usage case's importRotation for ladder facing,
+            // rather than the rotation baked into our mesh. Supply that facing
+            // and undo it in the source meshes to preserve the rendered support.
+            var builder=block.Builder as CustomBuilder;
+            if(builder==null || builder.usageCases.Count!=1)throw new Exception("Unexpected support builder: "+block.Name);
+            var usage=builder.usageCases[0];
+            var turn=block.Name.EndsWith("R90")?90:block.Name.EndsWith("R180")?180:block.Name.EndsWith("R270")?270:0;
+            // Native climb interaction approaches the positive facing side.
+            // The rungs sit on +X, perpendicular to the track's local Z axis.
+            var desired=new Vector3(0,(turn+90)%360,0);
+            var change=Quaternion.Inverse(Quaternion.Euler(desired))*Quaternion.Euler(usage.importRotation);
+            if(Quaternion.Angle(change,Quaternion.identity)>.01f)
+            {
+                var meshes=new HashSet<Mesh>();
+                if(usage.mesh!=null)foreach(var filter in usage.mesh.GetComponentsInChildren<MeshFilter>(true))if(filter.sharedMesh!=null)meshes.Add(filter.sharedMesh);
+                var lods=usage.blockMeshLodGroup;
+                if(lods==null)throw new Exception("Missing support LODs: "+block.Name);
+                foreach(var lod in lods.LOD0)if(lod.mesh!=null)meshes.Add(lod.mesh);
+                if(lods.LOD1.mesh!=null)meshes.Add(lods.LOD1.mesh);
+                if(lods.LOD2.mesh!=null)meshes.Add(lods.LOD2.mesh);
+                if(lods.Collider!=null)meshes.Add(lods.Collider);
+                foreach(var mesh in meshes)
+                {
+                    var original=mesh.vertices;
+                    var oldRotation=Quaternion.Euler(usage.importRotation);
+                    var newRotation=Quaternion.Euler(desired);
+                    var vertices=original.Select(p=>change*p).ToArray();
+                    for(var i=0;i<vertices.Length;i++)if((newRotation*vertices[i]-oldRotation*original[i]).sqrMagnitude>1e-8f)
+                        throw new Exception("Support world geometry changed: "+block.Name);
+                    mesh.vertices=vertices;
+                    mesh.normals=mesh.normals.Select(n=>change*n).ToArray();
+                    mesh.tangents=mesh.tangents.Select(t=>{var n=change*new Vector3(t.x,t.y,t.z);return new Vector4(n.x,n.y,n.z,t.w);}).ToArray();
+                    mesh.RecalculateBounds();EditorUtility.SetDirty(mesh);
+                }
+            }
+            usage.importRotation=desired;
+            EditorUtility.SetDirty(builder);
+            if(usage.importRotation!=desired)throw new Exception("Incorrect support climb direction: "+block.Name);
+        }
         static void Box(Transform root,string name,Vector3 p,Vector3 size,Material material,Quaternion rotation)
         {
             var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.name=name;o.transform.SetParent(root,false);
@@ -33,6 +104,10 @@ namespace EcoMinecarts.Editor
                 Beam(root.transform,"Diagonal brace",new Vector3(.28f,-.35f,z),new Vector3(-.28f,upper-.12f,z),.055f,structure);
             }
             foreach(var y in new[]{-.46f,upper-.07f})Box(root.transform,"Joint collar",new Vector3(0,y,0),new Vector3(.72f,.065f,.72f),fittings,Quaternion.identity);
+            // Put the ladder on the side of the track, not beneath its length.
+            // Continue the rungs through raised slope saddles as well.
+            for(var y=-.32f;y<upper+.02f;y+=.20f)
+                Box(root.transform,"Climbing rung",new Vector3(.385f,y,0),new Vector3(.045f,.045f,.54f),fittings,Quaternion.identity);
             if(part=="Top"){
                 var pitch=phase>0?Quaternion.Euler(-Mathf.Atan(.25f)*Mathf.Rad2Deg,0,0):Quaternion.identity;
                 Box(root.transform,"Rail saddle crossbeam",new Vector3(0,upper,0),new Vector3(.94f,.11f,.22f),structure,pitch);
@@ -42,6 +117,47 @@ namespace EcoMinecarts.Editor
                 }
             }
             return root;
+        }
+        static void ClearClimbingCorridor(Block block,int turn)
+        {
+            // Preserve the full visual LODs. Only the physical collider is cut
+            // back from the ladder face so collars and saddle overhangs cannot
+            // knock a climber off before they reach the rail-level landing.
+            var lods=((CustomBuilder)block.Builder).usageCases[0].blockMeshLodGroup;
+            var inverse=Quaternion.Inverse(Quaternion.Euler(0,turn,0));
+            var forward=Quaternion.Euler(0,turn,0);
+            var source=lods.Collider;
+            var original=source.vertices.Select(v=>inverse*v).ToArray();
+            var vertices=new List<Vector3>();var triangles=new List<int>();
+            var indices=source.triangles;
+            const float edge=.10f;
+            for(var i=0;i<indices.Length;i+=3)
+            {
+                var polygon=new List<Vector3>{original[indices[i]],original[indices[i+1]],original[indices[i+2]]};
+                var clipped=new List<Vector3>();
+                for(var j=0;j<polygon.Count;j++)
+                {
+                    var a=polygon[j];var b=polygon[(j+1)%polygon.Count];
+                    var inside=a.x<=-edge;var nextInside=b.x<=-edge;
+                    if(inside)clipped.Add(a);
+                    if(inside!=nextInside)clipped.Add(Vector3.Lerp(a,b,(-edge-a.x)/(b.x-a.x)));
+                }
+                if(clipped.Count<3)continue;
+                var start=vertices.Count;vertices.AddRange(clipped.Select(v=>forward*v));
+                for(var j=1;j<clipped.Count-1;j++)triangles.AddRange(new[]{start,start+j,start+j+1});
+            }
+            if(vertices.Count==0)throw new Exception("Support landing collider missing: "+block.Name);
+            var mesh=new Mesh{name=block.Name+"BlockClimbCollision"};
+            mesh.SetVertices(vertices);mesh.SetUVs(0, vertices.Select(v => new Vector2(v.x,v.z)).ToList());mesh.SetTriangles(triangles,0);mesh.RecalculateNormals();mesh.RecalculateBounds();
+            var path=Root+"/CoasterBlocks/"+block.Name+"BlockClimbCollision.asset";
+            var saved=AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if(saved==null){AssetDatabase.CreateAsset(mesh,path);saved=mesh;}
+            else{EditorUtility.CopySerialized(mesh,saved);Object.DestroyImmediate(mesh);EditorUtility.SetDirty(saved);}
+            lods.Collider=saved;EditorUtility.SetDirty(lods);
+            // A capsule-sized lane remains clear all the way through the saddle;
+            // rear-facing horizontal triangles still provide the exit landing.
+            if(saved.vertices.Any(v=>(inverse*v).x>-edge+.0001f))throw new Exception("Blocked support climb corridor: "+block.Name);
+            if(!saved.normals.Any(n=>n.y>.9f))throw new Exception("Support has no landing surface: "+block.Name);
         }
         public static BlockSet Build()
         {
@@ -58,6 +174,8 @@ namespace EcoMinecarts.Editor
                     // Bake the rotation into a parent, matching the native rotated variant contract.
                     var parent=new GameObject("BakedSupport");root.transform.SetParent(parent.transform,false);
                     CoasterTerrainAssetBuilder.Register(set,parent,name,structure,fittings);
+                    ClearClimbingCorridor(set.Blocks.Last(),turn);
+                    set.Blocks.Last().IsLadder=true;
                     set.Blocks.Last().Category="Rail Supports";set.Blocks.Last().AudioCategory=tier=="Wood"?"Wood":"Metal";
                     Object.DestroyImmediate(parent);
                 };

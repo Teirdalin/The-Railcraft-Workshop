@@ -8,7 +8,7 @@ using Eco.Shared.Serialization;
 using Eco.Shared.SharedTypes;
 using Eco.World.Blocks;
 using Eco.World.Water;
-public sealed class CoasterTrackChainStraightSection01FormType:FormType { public override string Name=>"CoasterTrackChainStraightSection01"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackChainStraightSection01")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackChainStraightSection01")); public override Type GroupType=>typeof(CoasterTrackChainGroup); public override int MinTier=>1; public override int SortOrder=>1; }
+public sealed class CoasterTrackChainStraightSection01FormType:FormType { public override string Name=>"CoasterTrackChainStraightSection01"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackChainStraightSection01")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackChainStraightSection01")); public override Type GroupType=>typeof(CoasterTrackChainGroup); public override bool IsBottomHalfFill=>true; public override int MinTier=>1; public override int SortOrder=>1; }
 [RotatedVariants(typeof(CoasterTrackChainStraightSection01R270Block),typeof(CoasterTrackChainStraightSection01Block),typeof(CoasterTrackChainStraightSection01R90Block),typeof(CoasterTrackChainStraightSection01R180Block)),IsForm(typeof(CoasterTrackChainStraightSection01FormType),typeof(CoasterTrackItem))]
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
 public sealed class CoasterTrackChainStraightSection01Block:CoasterTrackBlock,IWaterLoggedBlock{}

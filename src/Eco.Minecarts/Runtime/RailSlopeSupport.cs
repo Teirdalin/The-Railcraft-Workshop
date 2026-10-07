@@ -14,12 +14,14 @@ public sealed class RailSlopeSupport : IModInit
     private static int subscribed;
     public static void PostInitialize()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/PostInitialize");
         if (Interlocked.Exchange(ref subscribed, 1) == 0)
             Eco.World.World.OnBlockChanged.Add(OnChanged);
     }
 
     private static void OnChanged(WrappedWorldPosition3i position)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/OnChanged");
         var cell = new Vector3i(position.X, position.Y, position.Z);
         Validate(cell);
         // The changed block may be the support beneath an existing rail.
@@ -29,17 +31,19 @@ public sealed class RailSlopeSupport : IModInit
 
     public static bool HasSupport(Type railType, Type supportType)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/HasSupport");
         if (!VoxelTrackProfile.TryParse(railType.Name, out var rail) || !IsSlope(rail)) return true;
         var overlay = OverlayVersion(railType, supportType);
         if (overlay == null || !VoxelTrackProfile.TryParse(overlay.Name, out var matched)) return false;
         return rail.QuarterTurns==matched.QuarterTurns && rail.Shape.Replace("Slope","RampTop",StringComparison.Ordinal)==matched.Shape;
     }
 
-    private static bool IsSlope(VoxelTrackProfile rail) => rail.Shape.StartsWith("Slope", StringComparison.Ordinal)
-        || rail.Shape.StartsWith("RampTop", StringComparison.Ordinal);
+    private static bool IsSlope(VoxelTrackProfile rail) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/IsSlope"); return rail.Shape.StartsWith("Slope", StringComparison.Ordinal)
+        || rail.Shape.StartsWith("RampTop", StringComparison.Ordinal); }
 
     public static Type? NormalVersion(Type type)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/NormalVersion");
         if (!VoxelTrackProfile.TryParse(type.Name, out var rail) || !IsSlope(rail)) return null;
         var prefix = rail.Wooden ? "WoodenTrack" : rail.Chain ? "MinecartChain" : rail.Tram ? "TramTrack" : "MinecartTrack";
         var rotation = rail.QuarterTurns == 0 ? "" : (rail.QuarterTurns * 90).ToString();
@@ -49,6 +53,7 @@ public sealed class RailSlopeSupport : IModInit
 
     public static Type? OverlayVersion(Type railType, Type supportType)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/OverlayVersion");
         if (!VoxelTrackProfile.TryParse(railType.Name,out var rail) || !IsSlope(rail)
             || VoxelTrackProfile.TryParse(supportType.Name,out _)) return null;
         var form=BlockFormManager.GetFormForBlock(supportType);
@@ -72,11 +77,11 @@ public sealed class RailSlopeSupport : IModInit
         return railType.Assembly.GetType("Eco.Mods.TechTree."+prefix+"RampTop"+phase+(turns==0 ? "" : (turns*90).ToString())+"Block");
     }
 
-    public static Type PlacementVersion(Type railType, Type supportType) =>
-        OverlayVersion(railType,supportType) ?? NormalVersion(railType) ?? railType;
+    public static Type PlacementVersion(Type railType, Type supportType) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/PlacementVersion"); return OverlayVersion(railType,supportType) ?? NormalVersion(railType) ?? railType; }
 
     private static void Validate(Vector3i cell)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Validate");
         var block = Eco.World.World.GetBlock(cell);
         if (block == null || NormalVersion(block.GetType()) == null) return;
         var support = cell.Y > 0 ? Eco.World.World.GetBlock(new Vector3i(cell.X, cell.Y - 1, cell.Z)) : null;

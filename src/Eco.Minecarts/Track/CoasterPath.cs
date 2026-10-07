@@ -55,6 +55,7 @@ public sealed class CoasterPath
 
     private (int Index, float Blend) Locate(float t)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Locate");
         if (!float.IsFinite(t)) throw new ArgumentOutOfRangeException(nameof(t));
         var distance = Math.Clamp(t, 0, 1) * Length;
         var index = Array.BinarySearch(distances, distance);
@@ -64,15 +65,19 @@ public sealed class CoasterPath
         while(index>0&&distances[index+1]==distances[index])index--;
         return (index, (distance - distances[index]) / (distances[index + 1] - distances[index]));
     }
-    public Vector3 Point(float t) { var (i, f) = Locate(t); return Vector3.Lerp(points[i], points[i + 1], f); }
-    public Vector3 Tangent(float t) { var (i, f) = Locate(t); return Vector3.Normalize(Vector3.Lerp(tangents[i], tangents[i + 1], f)); }
+    public Vector3 Point(float t) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Point"); var (i, f) = Locate(t); return Vector3.Lerp(points[i], points[i + 1], f); }
+    public Vector3 Tangent(float t) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Tangent"); var (i, f) = Locate(t); return Vector3.Normalize(Vector3.Lerp(tangents[i], tangents[i + 1], f)); }
     public Vector3 Up(float t)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Up");
         var (i, f) = Locate(t); var up = Vector3.Lerp(ups[i], ups[i + 1], f); var tangent = Tangent(t);
         return Vector3.Normalize(up - tangent * Vector3.Dot(up, tangent));
     }
     public (float T, Vector3 Point, float Distance) Nearest(Vector3 position)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Nearest");
         // A loop has multiple local minima. A single ternary search is invalid.
         var best = float.PositiveInfinity; var result = Vector3.Zero; var distance = 0f;
         for (var i = 0; i < Samples; i++)
@@ -89,14 +94,16 @@ public sealed class CoasterPath
         return (distance / Length, result, MathF.Sqrt(best));
     }
 
-    private static Vector3 Straight(float t) => new(0, 0, -2 + 4 * t);
+    private static Vector3 Straight(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Straight"); return new(0, 0, -2 + 4 * t); }
     private static Vector3 Bend(float t, int side)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Bend");
         var a = t * MathF.PI / 2;
         return new(side * 4 * (1 - MathF.Cos(a)), 0, -2 + 4 * MathF.Sin(a));
     }
     private static Vector3 Loop(float t, int side)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Loop");
         // One full vertical revolution with two metres of lateral separation
         // between entry and exit: avoids overlapping approach/departure rails.
         // Smootherstep gives horizontal, unbanked endpoints on integer anchors.
@@ -121,7 +128,7 @@ public sealed class CoasterPath
         DescendingCoil("CoasterDescendingCoilLeft", -1),
         DescendingCoil("CoasterDescendingCoilRight", 1),
     }.Select(GridSockets).ToArray();
-    private static CoasterPath DescendingCoil(string key,int side) => Section(key,t=>
+    private static CoasterPath DescendingCoil(string key,int side) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/DescendingCoil"); return Section(key,t=>
     {
         // A full turn around a vertical axis, descending six blocks. Ease only
         // the drop so both sockets finish level with the modular straight rail.
@@ -134,8 +141,8 @@ public sealed class CoasterPath
         var bank=-side*(MathF.PI/6)*MathF.Pow(MathF.Sin(MathF.PI*t),2);
         up=Vector3.Transform(up,Quaternion.CreateFromAxisAngle(tangent,bank));
         return (new Vector3(side*3*(1-MathF.Cos(angle)),.15f-6*eased,-2+3*MathF.Sin(angle)),up,tangent);
-    },false);
-    private static CoasterPath Corkscrew(string key,int side) => Section(key,t=>
+    },false); }
+    private static CoasterPath Corkscrew(string key,int side) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Corkscrew"); return Section(key,t=>
     {
         // A horizontal helix with eased angular speed has straight, upright
         // sockets. The radial frame performs exactly one roll, including at
@@ -145,11 +152,12 @@ public sealed class CoasterPath
         var sin=MathF.Sin(angle);var cos=MathF.Cos(angle);
         return (new Vector3(side*2*sin,.15f+2*(1-cos),-2+12*t),
             new Vector3(-side*sin,cos,0),new Vector3(side*2*cos*rate,2*sin*rate,12));
-    },false);
+    },false); }
     // Whole sections and hammer rails share grid-face sockets, never integer
     // centre sockets. Half-cell straight leads also preserve endpoint frames.
     private static CoasterPath GridSockets(CoasterPath source)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/GridSockets");
         var length=source.Length;
         return Section(source.Key,t=>{
             var distance=t*(length+1)-.5f;
@@ -161,7 +169,7 @@ public sealed class CoasterPath
         },source.Chain);
     }
     private static readonly IReadOnlyDictionary<string, CoasterPath> ByKey = All.ToDictionary(p => p.Key);
-    public static CoasterPath Find(string key) => ByKey.TryGetValue(key, out var path) ? path : CoasterTerrainPath.Find(key).Path;
+    public static CoasterPath Find(string key) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Find"); return ByKey.TryGetValue(key, out var path) ? path : CoasterTerrainPath.Find(key).Path; }
     // A whole-section item's origin is the first buildable cell, with the
     // entrance socket on that cell's rear face. The rail path remains centered
     // on its original grid coordinates for save-stable physics profiles.
@@ -171,6 +179,7 @@ public sealed class CoasterPath
     // endpoints. Re-running world-up transport per voxel would unwind a loop.
     internal static CoasterPath Section(string key, Func<float,(Vector3 Point,Vector3 Up,Vector3 Tangent)> frame,bool chain)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Section");
         return new CoasterPath(key,frame,chain);
     }
     private CoasterPath(string key,Func<float,(Vector3 Point,Vector3 Up,Vector3 Tangent)> frame,bool chain)

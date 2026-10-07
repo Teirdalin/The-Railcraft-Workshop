@@ -6,7 +6,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>Eco.Minecarts</AssemblyName>
     <RootNamespace>Eco.Minecarts</RootNamespace>
-    <Version>0.1.0-beta.1</Version>
+    <Version>0.2.40</Version><Product>Railworks Workshop</Product><Title>Railworks Workshop</Title>
     <EnableIndustrialTracks Condition="'$(EnableIndustrialTracks)' == ''">false</EnableIndustrialTracks>
     <DefineConstants Condition="'$(EnableIndustrialTracks)' == 'true'">$(DefineConstants);INDUSTRIAL_TRACKS</DefineConstants>
     <!-- The inspected Windows Eco reference assemblies annotate their server surface as Windows-only. -->
@@ -14,6 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Recovery release: do not spawn the unverified transient arrow entities. -->
+    <Compile Remove="Runtime/ChainRailIndicators.cs" />
     <!-- Native ControllerHashSet exposes this interface; Eco supplies it at runtime. -->
     <PackageReference Include="NetFabric.Hyperlinq.Abstractions" Version="1.3.0" PrivateAssets="all" ExcludeAssets="runtime" />
     <PackageReference Include="Eco.ReferenceAssemblies"

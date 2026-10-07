@@ -22,7 +22,7 @@ using Eco.Shared.Utils;
 
 [Serialized]
 [LocDisplayName("Minecart")]
-[LocDescription("A narrow-gauge iron cart for hauling materials on rails.")]
+[LocDescription("A narrow-gauge iron cart for hauling materials on rails. Crafted at the Wainwright Table using Basic Engineering.")]
 [IconGroup("World Object Minimap")]
 [Weight(9000)]
 [SalvageCost(typeof(IronScrap), 8.0f, typeof(WoodScrap), 2.0f)]
@@ -71,7 +71,7 @@ public sealed class MinecartRecipe : RecipeFamily
             start: 5,
             skillType: typeof(BasicEngineeringSkill));
         this.Initialize(Localizer.DoStr("Minecart"), typeof(MinecartRecipe));
-        CraftingComponent.AddRecipe(typeof(RailcraftWorkbenchObject), this);
+        CraftingComponent.AddRecipe(RailRecipeWorkshops.For(typeof(MinecartRecipe)), this);
     }
 }
 
@@ -106,7 +106,7 @@ public sealed class MinecartObject : Eco.Minecarts.Runtime.RailVehicleObject, IR
         this.GetComponent<CustomTextComponent>().Initialize(200);
         this.GetComponent<VehicleComponent>().HumanPowered(0.8f);
         this.GetComponent<StockpileComponent>().Initialize(new Vector3i(2, 1, 2));
-        this.GetComponent<PublicStorageComponent>().Initialize(12, 2_500_000);
+        Eco.Minecarts.Physics.RailVehicleBalances.InitializeStorage(this.GetComponent<PublicStorageComponent>(),this.RailSpec);
         this.GetComponent<MinimapComponent>().InitAsMovable();
         this.GetComponent<MinimapComponent>().SetCategory(Localizer.DoStr("Vehicles"));
         this.GetComponent<VehicleComponent>().Initialize(3, 1.1f, 3);

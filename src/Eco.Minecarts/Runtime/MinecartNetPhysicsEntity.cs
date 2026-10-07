@@ -22,6 +22,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     private void CaptureGuidedPose()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/CaptureGuidedPose", this.cart);
         if (this.cart == null) return;
         // A guided WorldObject moves on the server without SyncPositionAndRotation's
         // forced client snap. NetPhysicsEntity sends its own cached transform, so
@@ -32,6 +33,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     public void SetGuided(bool value)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/SetGuided", this.cart);
         lock (this.ownershipGate)
         {
             value |= this.cart?.ServerOnlyPhysics == true;
@@ -55,6 +57,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     internal void PublishGuidedPose(System.Numerics.Vector3 velocity)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/PublishGuidedPose", this.cart);
         lock (this.ownershipGate)
         {
             if (this.guided && this.Controller != null)
@@ -68,6 +71,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     internal void ReleaseGuidedPose(System.Numerics.Vector3 velocity)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/ReleaseGuidedPose", this.cart);
         lock (this.ownershipGate)
         {
             this.guided = this.cart?.ServerOnlyPhysics == true;
@@ -84,6 +88,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     public override void SendUpdate(BSONObject data, INetObjectViewer viewer)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/SendUpdate", this.cart);
         lock (this.ownershipGate)
         {
             this.SendPose(data, viewer, initial: false);
@@ -93,6 +98,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     public override void SendInitialState(BSONObject data, INetObjectViewer viewer)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/SendInitialState", this.cart);
         lock (this.ownershipGate)
         {
             this.SendPose(data, viewer, initial: true);
@@ -102,7 +108,8 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     private void SendPose(BSONObject data, INetObjectViewer viewer, bool initial)
     {
-        if (this.cart?.ServerOnlyPhysics != true)
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/SendPose", this.cart);
+        if (!this.guided && this.cart?.ServerOnlyPhysics != true)
         {
             if (initial) base.SendInitialState(data, viewer);
             else base.SendUpdate(data, viewer);
@@ -129,6 +136,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     public override bool IsRelevant(INetObjectViewer viewer)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/IsRelevant", this.cart);
         lock (this.ownershipGate)
             return !this.guided ? base.IsRelevant(viewer) : viewer is IWorldObserver observer
                 // A guided car is rendered for as long as its track chunk is
@@ -140,6 +148,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     public override bool IsNotRelevant(INetObjectViewer viewer)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/IsNotRelevant", this.cart);
         lock (this.ownershipGate)
             return !this.guided ? base.IsNotRelevant(viewer) : viewer is IWorldObserver observer
                 && this.DistanceSquared(observer) > observer.ChunkViewDistance.NotVisibleSq;
@@ -147,6 +156,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
 
     public override void ReceiveUpdate(BSONObject data)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/ReceiveUpdate", this.cart);
         System.Numerics.Vector3 velocity;
         double packetSeconds;
         lock (this.ownershipGate)
@@ -171,7 +181,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
         this.cart?.GetComponent<MinecartMotionComponent>()?.OnNativePhysicsPose(velocity,packetSeconds);
     }
 
-    private float DistanceSquared(IWorldObserver observer) => Eco.Shared.Voxel.World.WrappedDistanceSq(
+    private float DistanceSquared(IWorldObserver observer) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Pose synchronization/DistanceSquared", this.cart); return Eco.Shared.Voxel.World.WrappedDistanceSq(
         new Eco.Shared.Math.Vector2(observer.Position.X, observer.Position.Z),
-        new Eco.Shared.Math.Vector2(this.Position.X, this.Position.Z));
+        new Eco.Shared.Math.Vector2(this.Position.X, this.Position.Z)); }
 }

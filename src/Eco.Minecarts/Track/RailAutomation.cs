@@ -21,6 +21,7 @@ public sealed class RailControlQueue
     public int Count { get { lock (gate) return pending.Count; } }
     public bool Schedule(RailControlRule rule, Guid train, double now)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Schedule");
         if (rule.Id == Guid.Empty || rule.Target == Guid.Empty || train == Guid.Empty
             || rule.Event is not (RailEvent.Enter or RailEvent.Leave or RailEvent.Arrive or RailEvent.Dispatch)
             || rule.Command is not (RailCommand.Activate or RailCommand.Deactivate or RailCommand.Toggle)
@@ -37,6 +38,7 @@ public sealed class RailControlQueue
     }
     public PendingRailCommand[] TakeDue(double now)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/TakeDue");
         if (!double.IsFinite(now)) return [];
         lock (gate)
         {
@@ -45,8 +47,10 @@ public sealed class RailControlQueue
             return ready;
         }
     }
-    public void Cancel(Guid rule) { lock (gate) pending.RemoveAll(p => p.Rule == rule); }
-    public void Clear() { lock (gate) pending.Clear(); }
+    public void Cancel(Guid rule) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Cancel"); lock (gate) pending.RemoveAll(p => p.Rule == rule); }
+    public void Clear() {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Clear"); lock (gate) pending.Clear(); }
 }
 
 /// <summary>
@@ -63,6 +67,7 @@ public sealed class RailBlockOccupancy
     public Guid[] Trains { get { lock (gate) return trains.OrderBy(x => x).ToArray(); } }
     public (Guid[] Entered, Guid[] Left) Replace(IEnumerable<(Guid Car, Guid Train)> cars)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Replace");
         var next = cars.Where(c => c.Car != Guid.Empty && c.Train != Guid.Empty).Select(c => c.Train).ToHashSet();
         lock (gate)
         {
@@ -79,6 +84,7 @@ public static class RailNetworkSearch
     /// <summary>Topology only: nearby disconnected parallel tracks are not a network.</summary>
     public static bool Connected<T>(T start, T destination, Func<T, IEnumerable<T>> neighbors, int limit = 4096) where T : notnull
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Connected");
         if (limit < 1) return false;
         var seen = new HashSet<T>(); var pending = new Queue<T>(); pending.Enqueue(start);
         while (pending.TryDequeue(out var node))

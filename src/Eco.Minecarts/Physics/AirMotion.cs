@@ -7,6 +7,7 @@ public static class AirMotion
 {
     public static Quaternion FollowTrajectory(Quaternion current, Vector3 velocity, int facingSign, double seconds)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/FollowTrajectory");
         current = Quaternion.Normalize(current);
         if (velocity.LengthSquared() < .0025f || !float.IsFinite(velocity.LengthSquared())) return current;
         var forward = Vector3.Transform(Vector3.UnitZ, current);
@@ -27,6 +28,7 @@ public static class AirMotion
 
     public static Quaternion TurnTowards(Quaternion current, Quaternion target, double seconds, float radiansPerSecond = 2.4f)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/TurnTowards");
         if (seconds <= 0 || !double.IsFinite(seconds) || radiansPerSecond <= 0) return Quaternion.Normalize(current);
         current = Quaternion.Normalize(current);
         target = Quaternion.Normalize(target);
@@ -38,6 +40,7 @@ public static class AirMotion
 
     public static (Vector3 Position, Vector3 Velocity) Step(Vector3 position, Vector3 velocity, double dt)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Step");
         var gravity = new Vector3(0, -9.80665f, 0);
         var seconds = (float)Math.Max(0, dt);
         return (position + velocity * seconds + gravity * (.5f * seconds * seconds), velocity + gravity * seconds);

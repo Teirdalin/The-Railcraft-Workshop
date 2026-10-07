@@ -23,6 +23,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
 
     public override void PostInitialize()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/PostInitialize", this.Parent);
         base.PostInitialize();
         if (mountValidationInstalled) return;
         mountValidationInstalled = true;
@@ -35,17 +36,20 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     }
     private void OnCabDismount()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/OnCabDismount", this.Parent);
         if(cabOperator!=null && !Parent.GetComponent<MountComponent>().MountedPlayers.Contains(cabOperator))
             ReleaseOperator("operator dismounted");
     }
     private void ReleaseOperator(string reason)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ReleaseOperator", this.Parent);
         cabOperator=null; switchStep=0;
         Parent.GetComponent<TrainControllerComponent>()?.HandoffToAutopilot();
         this.Changed(nameof(Throttle)); this.Changed(nameof(DriveMode)); this.Changed(nameof(SwitchCommand));
     }
     public override void Destroy()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Destroy", this.Parent);
         if(mountValidationInstalled) Parent.GetComponent<MountComponent>().PlayerDismountedEvent -= OnCabDismount;
         cabOperator = null;
         base.Destroy();
@@ -57,19 +61,22 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     [SyncToView,Autogen,PropReadOnly,LocDisplayName("Next Switch")] public string SwitchCommand=>switchStep==0?"Follow track":(switchStep<0?"Left":"Right")+" requested";
     private void SelectSwitchDirection(Player player,int direction)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/SelectSwitchDirection", this.Parent);
         if(!CanDrive(player)) return;
         switchStep=direction; switchDriver=player.ID; this.Changed(nameof(SwitchCommand));
     }
-    public void SwitchLeft(Player player)=>SelectSwitchDirection(player,-1);
-    public void SwitchForward(Player player)=>CancelSwitchCommand(player);
-    public void SwitchRight(Player player)=>SelectSwitchDirection(player,1);
+    public void SwitchLeft(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/SwitchLeft", this.Parent); SelectSwitchDirection(player,-1); }
+    public void SwitchForward(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/SwitchForward", this.Parent); CancelSwitchCommand(player); }
+    public void SwitchRight(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/SwitchRight", this.Parent); SelectSwitchDirection(player,1); }
     public void CancelSwitchCommand(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/CancelSwitchCommand", this.Parent);
         if(!CanDrive(player)) return;
         switchStep=0; switchDriver=player.ID; this.Changed(nameof(SwitchCommand));
     }
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Tick", this.Parent);
         base.Tick();
         this.Changed(nameof(Throttle)); this.Changed(nameof(Direction)); this.Changed(nameof(Brakes)); this.Changed(nameof(DriveMode));
         var mounts=Parent.GetComponent<MountComponent>();
@@ -94,11 +101,12 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
             switchStep=0; this.Changed(nameof(SwitchCommand));
         }
     }
-    [Interaction(InteractionTrigger.InteractKey, "Change manual / autopilot mode", modifier: InteractionModifier.Shift,
+    [Interaction(InteractionTrigger.InteractKey, "Start / stop autopilot", modifier: InteractionModifier.Shift,
         requiredEnvVars: new[] { "MineTrainCab" }, interactionDistance: 3, priority: 60,
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void ToggleAutodrive(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ToggleAutodrive", this.Parent);
         if (!target.ContainsParameter("MineTrainCab")) return;
         ToggleAutodrive(player);
     }
@@ -107,11 +115,13 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void ToggleAutodriveFromEngine(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ToggleAutodriveFromEngine", this.Parent);
         if (!target.ContainsParameter("MineTrainBoiler")) return;
         ToggleAutodrive(player);
     }
     private void ToggleAutodrive(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ToggleAutodrive", this.Parent);
         if (player == null || this.Parent.IsDestroyed
             || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
         var controller = this.Parent.GetComponent<TrainControllerComponent>();
@@ -122,6 +132,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
         interactionDistance: 3, priority: 50, authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void Drive(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Drive", this.Parent);
         if (this.Parent.IsDestroyed || !target.ContainsParameter("MineTrainCab")
             || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess)
             || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
@@ -133,6 +144,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     internal int OperatorId => cabOperator?.ID ?? 0;
     private bool CanOccupyCab(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/CanOccupyCab", this.Parent);
         if(player==null || Parent.IsDestroyed || !player.User.IsOnline
             || !Parent.IsAuthorized(player.User,AccessType.FullAccess)) return false;
         var mounts=Parent.GetComponent<MountComponent>();
@@ -145,6 +157,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     }
     private bool CanDrive(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/CanDrive", this.Parent);
         if(!CanOccupyCab(player) || (HasStandingOperator && cabOperator!=player)) return false;
         var mounts=Parent.GetComponent<MountComponent>();
         if(!mounts.MountedPlayers.Contains(player))
@@ -162,6 +175,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     }
     public void ReleaseControls(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ReleaseControls", this.Parent);
         if(player==null || Parent.IsDestroyed) return;
         var mounts=Parent.GetComponent<MountComponent>();
         if(!mounts.MountedPlayers.Contains(player)) return;
@@ -174,9 +188,10 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
             player.SetRelativePosAndRot(Parent.ID,new Vector3(0,cab.Floor+.02f,cab.Z+cab.Depth/2-.52f),Vector3.UnitZ);
         }
     }
-    public bool TakeControls(Player player) => CanDrive(player);
+    public bool TakeControls(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/TakeControls", this.Parent); return CanDrive(player); }
     public void LeaveTrain(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/LeaveTrain", this.Parent);
         if(player==null || Parent.IsDestroyed) return;
         var mounts=Parent.GetComponent<MountComponent>();
         var attached=mounts.MountedPlayers.Contains(player);
@@ -191,21 +206,24 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     // Only this player's membership is inspected; never dismount another rider.
     public void LeaveCab(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/LeaveCab", this.Parent);
         LeaveTrain(player);
     }
     [Interaction(InteractionTrigger.RightClick,"Leave cab",modifier:InteractionModifier.Shift,
         requiredEnvVars:new[]{"MineTrainCab"},interactionDistance:3,priority:90,
         flags:InteractionFlags.BlocksOtherInteraction)]
     public void ExitCab(Player p,InteractionTriggerInfo t,InteractionTarget target)
-    { if(target.ContainsParameter("MineTrainCab")) LeaveTrain(p); }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ExitCab", this.Parent); if(target.ContainsParameter("MineTrainCab")) LeaveTrain(p); }
     [Interaction(InteractionTrigger.InteractKey,"Take / leave controls (stay aboard)",requiredEnvVars:new[]{"RailCabStand"},
         interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void Stand(Player player,InteractionTriggerInfo trigger,InteractionTarget target) => BoardCab(player,target,"RailCabStand",1,AccessType.FullAccess);
+    public void Stand(Player player,InteractionTriggerInfo trigger,InteractionTarget target) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Stand", this.Parent); BoardCab(player,target,"RailCabStand",1,AccessType.FullAccess); }
     [Interaction(InteractionTrigger.InteractKey,"Take / leave controls (stay aboard)",requiredEnvVars:new[]{"RailCabSeat"},
         interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void Sit(Player player,InteractionTriggerInfo trigger,InteractionTarget target) => BoardCab(player,target,"RailCabSeat",1,AccessType.FullAccess);
+    public void Sit(Player player,InteractionTriggerInfo trigger,InteractionTarget target) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Sit", this.Parent); BoardCab(player,target,"RailCabSeat",1,AccessType.FullAccess); }
     private void BoardCab(Player player,InteractionTarget target,string key,int seat,AccessType access)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/BoardCab", this.Parent);
         if(player==null || Parent.IsDestroyed || !target.ContainsParameter(key) || !Parent.IsAuthorized(player.User,access)
             || Vector3.Distance(player.User.Position,Parent.Position)>3) return;
         var mounts=Parent.GetComponent<MountComponent>();
@@ -215,28 +233,41 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
         if(mounts.MountedPlayers.Contains(player)) CanDrive(player);
     }
     [Interaction(InteractionTrigger.LeftClick,"Increase throttle",requiredEnvVars:new[]{"RailCabThrottle"},interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void ThrottleUp(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabThrottle"))IncreaseThrottle(p);}
+    public void ThrottleUp(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ThrottleUp", this.Parent);if(target.ContainsParameter("RailCabThrottle"))IncreaseThrottle(p);}
     [Interaction(InteractionTrigger.RightClick,"Decrease throttle",requiredEnvVars:new[]{"RailCabThrottle"},interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void ThrottleDown(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabThrottle"))DecreaseThrottle(p);}
+    public void ThrottleDown(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ThrottleDown", this.Parent);if(target.ContainsParameter("RailCabThrottle"))DecreaseThrottle(p);}
     [Interaction(InteractionTrigger.InteractKey,"Apply brakes",requiredEnvVars:new[]{"RailCabBrake"},interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void BrakeLever(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabBrake"))Brake(p);}
+    public void BrakeLever(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/BrakeLever", this.Parent);if(target.ContainsParameter("RailCabBrake"))Brake(p);}
     [Interaction(InteractionTrigger.InteractKey,"Release brakes / coast",modifier:InteractionModifier.Shift,requiredEnvVars:new[]{"RailCabBrake"},interactionDistance:3,priority:80,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void CoastLever(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabBrake"))Coast(p);}
+    public void CoastLever(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/CoastLever", this.Parent);if(target.ContainsParameter("RailCabBrake"))Coast(p);}
     [Interaction(InteractionTrigger.InteractKey,"Reverse (stop first)",requiredEnvVars:new[]{"RailCabReverse"},interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void ReverseLever(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabReverse"))Reverse(p);}
+    public void ReverseLever(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ReverseLever", this.Parent);if(target.ContainsParameter("RailCabReverse"))Reverse(p);}
     [Interaction(InteractionTrigger.LeftClick,"Switch route left one step",requiredEnvVars:new[]{"RailCabSwitch"},interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void RouteLeft(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabSwitch"))SwitchLeft(p);}
+    public void RouteLeft(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/RouteLeft", this.Parent);if(target.ContainsParameter("RailCabSwitch"))SwitchLeft(p);}
     [Interaction(InteractionTrigger.RightClick,"Switch route right one step",requiredEnvVars:new[]{"RailCabSwitch"},interactionDistance:3,priority:70,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void RouteRight(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabSwitch"))SwitchRight(p);}
+    public void RouteRight(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/RouteRight", this.Parent);if(target.ContainsParameter("RailCabSwitch"))SwitchRight(p);}
     [Interaction(InteractionTrigger.InteractKey,"Cancel pending switch request",modifier:InteractionModifier.Shift,requiredEnvVars:new[]{"RailCabSwitch"},interactionDistance:3,priority:80,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
-    public void CancelRoute(Player p,InteractionTriggerInfo t,InteractionTarget target){if(target.ContainsParameter("RailCabSwitch"))CancelSwitchCommand(p);}
+    public void CancelRoute(Player p,InteractionTriggerInfo t,InteractionTarget target){
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/CancelRoute", this.Parent);if(target.ContainsParameter("RailCabSwitch"))CancelSwitchCommand(p);}
 
-    public void IncreaseThrottle(Player player) { if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetServerThrottle(Math.Min(1,m.ServerThrottle+.2),m.ServerDirection); this.Changed(nameof(Throttle)); this.Changed(nameof(DriveMode)); }
-    public void DecreaseThrottle(Player player) { if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetServerThrottle(Math.Max(0,m.ServerThrottle-.2),m.ServerDirection); this.Changed(nameof(Throttle)); }
-    public void Coast(Player player) { if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetDriveCommands(0,m.ServerDirection,false); this.Changed(nameof(Throttle)); }
-    public void Brake(Player player) { if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetDriveCommands(0,m.ServerDirection,true); this.Changed(nameof(Throttle)); }
+    public void IncreaseThrottle(Player player) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/IncreaseThrottle", this.Parent); if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetServerThrottle(Math.Min(1,m.ServerThrottle+.2),m.ServerDirection); this.Changed(nameof(Throttle)); this.Changed(nameof(DriveMode)); }
+    public void DecreaseThrottle(Player player) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/DecreaseThrottle", this.Parent); if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetServerThrottle(Math.Max(0,m.ServerThrottle-.2),m.ServerDirection); this.Changed(nameof(Throttle)); }
+    public void Coast(Player player) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Coast", this.Parent); if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetDriveCommands(0,m.ServerDirection,false); this.Changed(nameof(Throttle)); }
+    public void Brake(Player player) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Brake", this.Parent); if (!CanDrive(player)) return; var m=Parent.GetComponent<MinecartMotionComponent>(); m.SetDriveCommands(0,m.ServerDirection,true); this.Changed(nameof(Throttle)); }
     public void Reverse(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Reverse", this.Parent);
         if (!CanDrive(player)) return;
         var m=Parent.GetComponent<MinecartMotionComponent>();
         if (Math.Abs(m.CurrentRailVelocity.Length())>.08) { Brake(player); return; }
@@ -249,6 +280,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
         flags: InteractionFlags.BlocksOtherInteraction, MinCaloriesRequired = 0)]
     public void PutFuel(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/PutFuel", this.Parent);
         if (player == null || this.Parent.IsDestroyed || !target.ContainsParameter("MineTrainBoiler")
             || !this.Parent.IsAuthorized(player.User, AccessType.ConsumerAccess)
             || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
@@ -260,6 +292,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
         interactionDistance: 3, priority: 50, authRequired: AccessType.ConsumerAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void OpenBoiler(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/OpenBoiler", this.Parent);
         if (target.ContainsParameter("MineTrainBoiler") && !this.Parent.IsDestroyed
             && this.Parent.IsAuthorized(player.User, AccessType.ConsumerAccess)
             && Vector3.Distance(player.User.Position, this.Parent.Position) <= 3) this.Parent.OpenUI(player);

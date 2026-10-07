@@ -34,9 +34,21 @@ namespace EcoMinecarts.Editor
                 Box(root.transform,center-up*.085f,new Vector3(.72f,.055f,Mathf.Min(.06f,interval*.5f)),rotation,paint));
             if(section.Chain)CoasterAssetBuilder.AtSpacing(section.Points,.10f,(center,up,rotation,interval)=>{
                 var right=rotation*Vector3.right;
-                foreach(var side in new[]{-1,1})Box(root.transform,center+right*side*.043f-up*.015f,new Vector3(.02f,.035f,Mathf.Min(.09f,interval*.9f)),rotation,steel);
-                Box(root.transform,center-up*.015f,new Vector3(.11f,.025f,Mathf.Min(.025f,interval*.3f)),rotation,steel);
+                var forward=rotation*Vector3.forward;
+                // Match the minecart chain's open U links. The rear pin sits at
+                // -Z and the open tips point along +Z, the chain's pull direction.
+                // Short arms leave a visible gap before the next link's rear pin.
+                var length=Mathf.Min(.06f,interval*.6f);
+                foreach(var side in new[]{-1,1})Box(root.transform,center+right*side*.055f-up*.015f,new Vector3(.018f,.025f,length),rotation,steel);
+                Box(root.transform,center-up*.015f-forward*(length*.5f),new Vector3(.11f,.025f,Mathf.Min(.025f,interval*.25f)),rotation,steel);
             });
+            if(section.Key.Contains("ChainBrake"))
+            {
+                var mid=section.Points[section.Points.Length/2];
+                foreach(var side in new[]{-1,1})
+                    Box(root.transform,mid.Position+Vector3.right*(side*.20f)-mid.Up*.04f,
+                        new Vector3(.07f,.05f,.86f),Quaternion.identity,paint);
+            }
             return root;
         }
         static GameObject SnapEndGeometry(Material steel,Material paint)
@@ -54,6 +66,7 @@ namespace EcoMinecarts.Editor
         static void Sweep(Transform parent,CoasterAssetBuilder.Path section,float side,float vertical,float width,float height,Material material)
         {
             var points=section.Points;var vertices=new Vector3[points.Length*8+8];var uv=new Vector2[vertices.Length];
+            var normals=new Vector3[vertices.Length];
             var triangles=new List<int>();float distance=0;
             for(var i=0;i<points.Length;i++)
             {
@@ -65,6 +78,7 @@ namespace EcoMinecarts.Editor
                 {
                     var j=(face+endpoint)%4;var index=i*8+face*2+endpoint;
                     vertices[index]=centre+right*(j==1||j==2?width/2:-width/2)+up*(j>=2?height/2:-height/2);
+                    normals[index]=face==0?-up:face==1?right:face==2?up:-right;
                     uv[index]=new Vector2(endpoint,distance);
                     if(i==0||endpoint!=0)continue;
                     var a=(i-1)*8+face*2;var next=a+1;var b=i*8+face*2;var bn=b+1;
@@ -76,10 +90,17 @@ namespace EcoMinecarts.Editor
             var start=points.Length*8;var end=start+4;
             for(var j=0;j<4;j++){
                 vertices[start+j]=vertices[j*2];vertices[end+j]=vertices[(points.Length-1)*8+j*2];
+                var firstRight=Vector3.Cross(points[0].Up,points[1].Position-points[0].Position).normalized;
+                var lastRight=Vector3.Cross(points[points.Length-1].Up,points[points.Length-1].Position-points[points.Length-2].Position).normalized;
+                normals[start+j]=-Vector3.Cross(firstRight,points[0].Up).normalized;
+                normals[end+j]=Vector3.Cross(lastRight,points[points.Length-1].Up).normalized;
                 uv[start+j]=uv[end+j]=new Vector2(j%2,j/2);
             }
             triangles.AddRange(new[]{start,start+2,start+1,start,start+3,start+2,end,end+1,end+2,end,end+2,end+3});
             var mesh=new Mesh();mesh.vertices=vertices;mesh.uv=uv;mesh.triangles=triangles.ToArray();mesh.RecalculateNormals();mesh.RecalculateBounds();
+            // Faceted endpoint averages depend on the first short edge. Use
+            // the authored frame so both sides of a compact socket shade alike.
+            if(section.Key.Contains("Compact"))mesh.normals=normals;
             var obj=new GameObject("Continuous rail",typeof(MeshFilter),typeof(MeshRenderer));obj.transform.SetParent(parent,false);
             obj.GetComponent<MeshFilter>().sharedMesh=mesh;obj.GetComponent<MeshRenderer>().sharedMaterial=material;
         }
@@ -87,7 +108,8 @@ namespace EcoMinecarts.Editor
         {
             var name=key+"Block";
             var parts=new List<Mesh>();
-            foreach(var material in new[]{steel,paint})
+            var renderMaterials=new[]{steel,paint};
+            foreach(var material in renderMaterials)
             {
                 var part=new Mesh();part.CombineMeshes(geometry.GetComponentsInChildren<MeshFilter>().Where(f=>f.GetComponent<Renderer>().sharedMaterial==material)
                     .Select(f=>new CombineInstance{mesh=f.sharedMesh,transform=geometry.transform.worldToLocalMatrix*f.transform.localToWorldMatrix}).ToArray(),true);
@@ -103,12 +125,12 @@ namespace EcoMinecarts.Editor
             lods.LOD1=new MeshAndFlags{mesh=collision,concaveFaces=PerFaceFlag.All};lods.LOD2=lods.LOD1;lods.Collider=collision;
             lods=Save(lods,Root+"/"+name+"LODs.asset");
             var source=new GameObject(name,typeof(MeshFilter),typeof(MeshRenderer));source.GetComponent<MeshFilter>().sharedMesh=mesh;
-            source.GetComponent<MeshRenderer>().sharedMaterials=new[]{steel,paint};
+            source.GetComponent<MeshRenderer>().sharedMaterials=renderMaterials;
             var prefab=PrefabUtility.SaveAsPrefabAsset(source,Root+"/"+name+".prefab");Object.DestroyImmediate(source);
             var builder=ScriptableObject.CreateInstance<CustomBuilder>();builder.usageCases=new List<MeshUsageCase>{new MeshUsageCase{
                 enabled=true,mesh=prefab,blockMeshLodGroup=lods,applyConditionsToAllRotations=false,dontRotateBaseMesh=true,isMeshFacesConcave=PerFaceFlag.All}};
             builder.previewMaterial=steel;builder=Save(builder,Root+"/"+name+"Builder.asset");
-            set.Blocks.Add(new Block{Name=key,Builder=builder,Material=steel,Materials=new[]{paint},OverrideSubMaterialsTransparency=new OverrideMaterialTransparency[1],
+            set.Blocks.Add(new Block{Name=key,Builder=builder,Material=steel,Materials=renderMaterials.Skip(1).ToArray(),OverrideSubMaterialsTransparency=new OverrideMaterialTransparency[renderMaterials.Length-1],
                 Solid=true,WaterLoggable=true,BuildCollider=true,GenerateMeshCollider=true,Rendered=true,PrefabHeightOffset=-.5f,
                 ActualHeight=Mathf.Max(.15f,mesh.bounds.max.y+.5f),Category="Roller Coaster Rail",AudioCategory="Metal",Tier=1});
         }
@@ -212,6 +234,34 @@ namespace EcoMinecarts.Editor
                 ["MAT_IronBare"]=AssetDatabase.FindAssets("MAT_IronBare t:Material").Select(AssetDatabase.GUIDToAssetPath).Select(AssetDatabase.LoadAssetAtPath<Material>).First(),
                 ["MAT_IronPainted"]=AssetDatabase.FindAssets("MAT_IronPainted t:Material").Select(AssetDatabase.GUIDToAssetPath).Select(AssetDatabase.LoadAssetAtPath<Material>).First()});
             AssetDatabase.SaveAssets();MinecartAssetBuilder.BuildSavedClientBundle();
+        }
+        public static void RebuildCompactTransitions()
+        {
+            var sections=RailExpansionAssetBuilder.ReadCatalog().CoasterTerrain
+                .Where(s=>s.SourceKey.Contains("Compact")&&(s.SourceKey.EndsWith("Entry")||s.SourceKey.EndsWith("Exit"))).ToArray();
+            if(sections.Length!=8||sections.Any(s=>s.Points.Length!=129))throw new Exception("Expected eight refined compact transition paths");
+            var set=AssetDatabase.LoadAssetAtPath<BlockSet>(Root+"/CoasterTrack.asset");
+            var steel=AssetDatabase.LoadAssetAtPath<Material>("Assets/EcoMinecarts/Materials/MAT_IronBare.mat");
+            var paint=AssetDatabase.LoadAssetAtPath<Material>("Assets/EcoMinecarts/Materials/MAT_IronPainted.mat");
+            var names=new HashSet<string>(sections.SelectMany(s=>Enumerable.Range(0,4).Select(t=>s.Key+(t==0?"":"R"+t*90))));
+            var oldCount=set.Blocks.Count;
+            set.Blocks.RemoveAll(b=>names.Contains(b.Name));
+            foreach(var section in sections)
+            {
+                var geometry=Geometry(section,steel,paint);
+                for(var turn=0;turn<4;turn++)
+                {
+                    var rotated=new GameObject("Compact transition rotation");geometry.transform.SetParent(rotated.transform,false);
+                    geometry.transform.localRotation=Quaternion.Euler(0,turn*90,0);
+                    Register(set,rotated,section.Key+(turn==0?"":"R"+turn*90),steel,paint);
+                    geometry.transform.SetParent(null,false);Object.DestroyImmediate(rotated);
+                }
+                Object.DestroyImmediate(geometry);
+                MinecartIconBuilder.Render(AssetDatabase.LoadAssetAtPath<GameObject>(Root+"/"+section.Key+"Block.prefab"),section.Key);
+            }
+            if(set.Blocks.Count!=oldCount)throw new Exception("Compact transition rebuild changed registry size");
+            EditorUtility.SetDirty(set);AssetDatabase.SaveAssets();MinecartAssetBuilder.BuildAuthoredClientBundle();
+            Debug.Log("COMPACT_TRANSITIONS_REBUILT: eight paths, 32 rotations; other block registrations retained.");
         }
     }
 }

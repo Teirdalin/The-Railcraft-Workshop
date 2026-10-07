@@ -59,9 +59,9 @@ public sealed class TramWideRailTurnObject : WorldObject,IRepresentsItem
                 Eco.World.World.DeleteBlock(cell);
     }
 }
-[RequiresSkill(typeof(BasicEngineeringSkill),3)]
+[RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class TramWideRailTurnRecipe:MinecartRailRecipeFamily
-{public TramWideRailTurnRecipe()=>Configure(MinecartRailRecipes.Make<TramWideRailTurnItem>("Tram Rail - Wide Turn (3x3)",4,6,2),"Tram Rail - Wide Turn (3x3)",typeof(TramWideRailTurnRecipe),120,3);}
+{public TramWideRailTurnRecipe()=>Configure(MinecartRailRecipes.Make<TramWideRailTurnItem>("Tram Rail - Wide Turn (3x3)",4,6,2,skillType:typeof(IndustrySkill)),"Tram Rail - Wide Turn (3x3)",typeof(TramWideRailTurnRecipe),120,3,skillType:typeof(IndustrySkill));}
 [RequiresSkill(typeof(BasicEngineeringSkill), 3)]
 public sealed class WideRailTurnRecipe : MinecartRailRecipeFamily
 { public WideRailTurnRecipe() => this.Configure(MinecartRailRecipes.Make<WideRailTurnItem>("Standard Rail - Wide Turn (3x3)", 4, 0, 2, hewnLogs: 6), "Standard Rail - Wide Turn (3x3)", typeof(WideRailTurnRecipe), 120, 3); }
@@ -75,9 +75,9 @@ public sealed class TrainStationObject : WorldObject, IRepresentsItem
     public Type RepresentedItemType => typeof(TrainStationItem);
     public override LocString DisplayName => Localizer.DoStr("Train Station");
 }
-[RequiresSkill(typeof(BasicEngineeringSkill), 3)]
+[RequiresSkill(typeof(MechanicsSkill), 3)]
 public sealed class TrainStationRecipe : MinecartRailRecipeFamily
-{ public TrainStationRecipe() => this.Configure(MinecartRailRecipes.Make<TrainStationItem>("Train Station", 8, 12), "Train Station", typeof(TrainStationRecipe), 100, 4); }
+{ public TrainStationRecipe() => this.Configure(MinecartRailRecipes.Make<TrainStationItem>("Train Station", 8, 12, skillType:typeof(MechanicsSkill)), "Train Station", typeof(TrainStationRecipe), 100, 4, skillType:typeof(MechanicsSkill)); }
 
 [Serialized, LocDisplayName("Broken Wooden Rail"), Weight(1000)]
 public sealed class BrokenWoodenTrackItem : WorldObjectItem<BrokenWoodenTrackObject> { }

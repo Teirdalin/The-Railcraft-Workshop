@@ -6,6 +6,7 @@ namespace Eco.Minecarts.Track;
 public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, bool Chain, bool Wooden = false, bool Industrial = false, float SwitchRadius = 0, int SwitchRoute = 0, bool Coaster = false, bool Tram = false)
 {
     public float HalfGauge => Industrial ? 1f : .30f;
+    public bool BrakingChain => this.Coaster && this.Shape == "CoasterTrackChainBrakeSection01";
     public bool IsBend => SwitchRadius>0 ? SwitchRoute!=0 : Shape is "Bend" or "BendLeft" or "WideBend" or "IndustrialBend" or "IndustrialBendLeft";
     public bool Mirrored => SwitchRadius>0 ? SwitchRoute<0 : Shape is "BendLeft" or "IndustrialBendLeft";
     private float BendCenter => SwitchRadius>0 ? SwitchRadius : Industrial ? 3.5f : Shape == "WideBend" ? 1.5f : .5f;
@@ -13,6 +14,7 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
     public double MaximumSupportedKg => this.Wooden ? 900 : double.PositiveInfinity;
     public static bool TryParse(string typeName, out VoxelTrackProfile profile)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/TryParse");
         profile = default;
         if(CoasterTerrainPath.TryProfile(typeName,out profile))return true;
         var chain = typeName.StartsWith("MinecartChain", StringComparison.Ordinal);
@@ -36,6 +38,7 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
 
     public Vector3 Point(float t)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Point");
         t = Math.Clamp(t, 0, 1);
         if (Coaster) return Rotate(CoasterPath.Find(Shape).Point(t));
         Vector3 point;
@@ -58,14 +61,15 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
         return Vector3.Transform(point, Quaternion.CreateFromAxisAngle(Vector3.UnitY, this.QuarterTurns * MathF.PI / 2));
     }
 
-    private Vector3 Rotate(Vector3 vector) => Vector3.Transform(vector, Quaternion.CreateFromAxisAngle(Vector3.UnitY, QuarterTurns * MathF.PI / 2));
-    public Vector3 Up(float t) => Coaster ? Rotate(CoasterPath.Find(Shape).Up(t)) : Vector3.Normalize(Vector3.Cross(Tangent(t), Vector3.Cross(Vector3.UnitY, Tangent(t))));
-    public Vector3 Tangent(float t) => Coaster ? Rotate(CoasterPath.Find(Shape).Tangent(t)) : Vector3.Normalize(this.Point(Math.Min(.9999f, t) + .0001f) - this.Point(Math.Max(.0001f, t) - .0001f));
+    private Vector3 Rotate(Vector3 vector) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Rotate"); return Vector3.Transform(vector, Quaternion.CreateFromAxisAngle(Vector3.UnitY, QuarterTurns * MathF.PI / 2)); }
+    public Vector3 Up(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Up"); return Coaster ? Rotate(CoasterPath.Find(Shape).Up(t)) : Vector3.Normalize(Vector3.Cross(Tangent(t), Vector3.Cross(Vector3.UnitY, Tangent(t)))); }
+    public Vector3 Tangent(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Tangent"); return Coaster ? Rotate(CoasterPath.Find(Shape).Tangent(t)) : Vector3.Normalize(this.Point(Math.Min(.9999f, t) + .0001f) - this.Point(Math.Max(.0001f, t) - .0001f)); }
     public float Curvature => float.IsPositiveInfinity(this.Radius) ? 0 : 1 / this.Radius;
     public float Length => Coaster ? CoasterPath.Find(Shape).Length : this.Curvature > 0 ? MathF.PI / 2 * this.Radius : Vector3.Distance(this.Point(0), this.Point(1));
 
     public (float T, Vector3 Point, float Distance) Nearest(Vector3 local)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Nearest");
         if (Coaster)
         {
             var p = CoasterPath.Find(Shape).Nearest(Vector3.Transform(local, Quaternion.CreateFromAxisAngle(Vector3.UnitY, -QuarterTurns * MathF.PI / 2)));

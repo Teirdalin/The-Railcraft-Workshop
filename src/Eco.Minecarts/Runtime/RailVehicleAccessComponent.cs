@@ -23,10 +23,11 @@ public sealed class RailVehicleAccessComponent : WorldObjectComponent
     public string GrantOperator => "";
     [SyncToView, Autogen, LocDisplayName("Revoke Operator Access"), LocDescription("Owner only. Enter an exact username to remove their direct access. Ownership and group permissions stay unchanged.")]
     public string RevokeOperator => "";
-    [RPC] public void SetGrantOperator(Player player,string value) => Change(player,value,true);
-    [RPC] public void SetRevokeOperator(Player player,string value) => Change(player,value,false);
+    [RPC] public void SetGrantOperator(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/SetGrantOperator", this.Parent); Change(player,value,true); }
+    [RPC] public void SetRevokeOperator(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/SetRevokeOperator", this.Parent); Change(player,value,false); }
     private void Change(Player player,string value,bool add)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Change", this.Parent);
         if(player==null || Parent.IsDestroyed || Auth?.Deed==null
             || !Parent.IsAuthorized(player.User,AccessType.OwnerAccess)
             || Vector3.Distance(player.User.Position,Parent.Position)>((RailVehicleObject)Parent).CouplerOffset+4)return;

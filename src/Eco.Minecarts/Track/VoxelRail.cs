@@ -12,11 +12,11 @@ public readonly record struct RailCell(int X, int Y, int Z)
 
 public readonly record struct VoxelRail(RailCell Cell, VoxelTrackProfile Profile)
 {
-    public Vector3 Point(float t) => this.Cell.Origin + this.Profile.Point(t);
-    public bool Connects(int end, VoxelRail other, int otherEnd) => this.Cell != other.Cell
+    public Vector3 Point(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Point"); return this.Cell.Origin + this.Profile.Point(t); }
+    public bool Connects(int end, VoxelRail other, int otherEnd) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Connects"); return this.Cell != other.Cell
         && this.Profile.Industrial == other.Profile.Industrial
         && this.Profile.Coaster == other.Profile.Coaster
         && Vector3.DistanceSquared(this.Point(end), other.Point(otherEnd)) < .0001f
         && Vector3.Dot(this.Profile.Tangent(end) * (end == 0 ? -1 : 1),
-            other.Profile.Tangent(otherEnd) * (otherEnd == 0 ? -1 : 1)) < -.65f;
+            other.Profile.Tangent(otherEnd) * (otherEnd == 0 ? -1 : 1)) < -.65f; }
 }

@@ -12,7 +12,9 @@ namespace EcoMinecarts.Editor
     {
         const string Root = "Assets/EcoMinecarts";
         const string Folder = Root + "/DistanceTextures";
-        const int Size = 32;
+        // Eco 0.14 MapConfig combines these into a 128px sRGB DXT1 array.
+        // An arbitrary thumbnail size/format is not compatible with that array.
+        const int Size = 128;
 
         public static void Apply()
         {
@@ -70,15 +72,28 @@ namespace EcoMinecarts.Editor
                 throw new InvalidOperationException("Unexpected green fallback for " + material.name);
             var id = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(material));
             var path = Folder + "/" + id + ".asset";
+            var baked = new Texture2D(Size, Size, TextureFormat.RGBA32, true, false);
+            baked.name = material.name + "_Distant";
+            baked.wrapMode = TextureWrapMode.Repeat; baked.filterMode = FilterMode.Trilinear;
+            baked.SetPixels(pixels); baked.Apply(true, false);
+            EditorUtility.CompressTexture(baked, TextureFormat.DXT1, TextureCompressionQuality.Best);
+            if (baked.width != Size || baked.height != Size || baked.format != TextureFormat.DXT1
+                || !baked.isDataSRGB || baked.mipmapCount != 8)
+                throw new InvalidOperationException("Invalid Eco LOD texture: " + baked.name);
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (texture == null)
             {
-                texture = new Texture2D(Size, Size, TextureFormat.RGBA32, true, false);
+                texture = baked;
                 AssetDatabase.CreateAsset(texture, path);
             }
-            texture.name = material.name + "_Distant";
-            texture.wrapMode = TextureWrapMode.Repeat; texture.filterMode = FilterMode.Trilinear;
-            texture.SetPixels(pixels); texture.Apply(true, false); EditorUtility.SetDirty(texture);
+            else
+            {
+                // Replace the serialized texture data without changing its GUID,
+                // including when updating an older 32px/uncompressed asset.
+                EditorUtility.CopySerialized(baked, texture);
+                UnityEngine.Object.DestroyImmediate(baked);
+            }
+            EditorUtility.SetDirty(texture);
             Debug.Log("RAIL_DISTANCE_MATERIAL: " + material.name + " = " + average);
             return (texture, average);
         }

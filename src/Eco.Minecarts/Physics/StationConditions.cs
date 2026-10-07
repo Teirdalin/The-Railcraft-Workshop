@@ -14,9 +14,9 @@ public sealed class StationDepartureCondition
     public StationDepartureCondition() { }
     public StationDepartureCondition(StationConditionKind kind, double threshold)
     { Kind = kind; Threshold = Normalize(kind, threshold); }
-    public static double Normalize(StationConditionKind kind, double value) => !double.IsFinite(value) ? 0
-        : kind == StationConditionKind.WaitSeconds ? Math.Clamp(value, 0, 86400) : Math.Clamp(value, 0, 100);
-    public bool Test(double elapsed, double percent, bool full, bool empty) => Kind switch
+    public static double Normalize(StationConditionKind kind, double value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Normalize"); return !double.IsFinite(value) ? 0
+        : kind == StationConditionKind.WaitSeconds ? Math.Clamp(value, 0, 86400) : Math.Clamp(value, 0, 100); }
+    public bool Test(double elapsed, double percent, bool full, bool empty) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Test"); return Kind switch
     {
         StationConditionKind.WaitSeconds => double.IsFinite(elapsed) && elapsed >= Normalize(Kind, Threshold),
         StationConditionKind.CargoAtLeastPercent => double.IsFinite(percent) && percent >= Normalize(Kind, Threshold),
@@ -24,10 +24,11 @@ public sealed class StationDepartureCondition
         StationConditionKind.CarsFull => full,
         StationConditionKind.CarsEmpty => empty,
         _ => false
-    };
+    }; }
     public static bool Ready(IReadOnlyList<StationDepartureCondition> rules, RequiredTrue comparison,
         double elapsed, double percent, bool full, bool empty, bool cargoKnown = true)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Ready");
         // Unlike civic expressions, an empty station rule list must not send a train away.
         if (rules.Count == 0 || rules.Any(r => r == null || !Enum.IsDefined(r.Kind))) return false;
         // Unknown cargo is not equivalent to zero cargo, including under NONE.

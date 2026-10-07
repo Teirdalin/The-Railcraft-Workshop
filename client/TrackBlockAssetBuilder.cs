@@ -12,7 +12,7 @@ namespace EcoMinecarts.Editor
         private const string Root = "Assets/EcoMinecarts/TrackBlocks";
         private static Material Iron => AssetDatabase.LoadAssetAtPath<Material>("Assets/EcoMinecarts/Materials/MAT_IronBare.mat");
         private static Material Wood => AssetDatabase.LoadAssetAtPath<Material>("Assets/EcoMinecarts/Materials/MAT_WoodRail.mat");
-        private static Material TramBed
+        public static Material TramBed
         {
             get
             {

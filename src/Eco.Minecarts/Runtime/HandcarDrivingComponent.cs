@@ -18,6 +18,7 @@ public sealed class HandcarDrivingComponent : WorldObjectComponent
         interactionDistance:3,priority:60,authRequired:AccessType.FullAccess,flags:InteractionFlags.BlocksOtherInteraction)]
     public void Operate(Player player,InteractionTriggerInfo trigger,InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Operate", this.Parent);
         if(this.Parent.IsDestroyed || !target.ContainsParameter("HandcarPump")
             || !this.Parent.IsAuthorized(player.User,AccessType.FullAccess)
             || Vector3.Distance(player.User.Position,this.Parent.Position)>3) return;

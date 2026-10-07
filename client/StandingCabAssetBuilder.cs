@@ -131,7 +131,8 @@ namespace EcoMinecarts.Editor
             if(Mathf.Abs(cushion.GetComponent<Renderer>().bounds.max.y-mount.seats[1].transform.position.y-RailRiderFit.SeatedHipHeight+RailRiderFit.RiderLift)>.002f)
                 throw new Exception("Operator cushion does not match seated hip datum: "+prefab.name);
             var bodyCenter=mount.seats[1].transform.position+Vector3.up*1.05f;
-            foreach(var c in prefab.GetComponentsInChildren<BoxCollider>())
+            // Placement volumes are removed by Eco; disabled/trigger colliders are not solid cab obstacles.
+            foreach(var c in prefab.GetComponentsInChildren<BoxCollider>().Where(c=>c.enabled&&!c.isTrigger&&c.GetComponent<ColliderPlacementOptions>()?.RemoveColliderAfterPlacement!=true))
             {
                 var local=c.transform.InverseTransformPoint(bodyCenter)-c.center;
                 if(Mathf.Abs(local.x)<c.size.x/2 && Mathf.Abs(local.y)<c.size.y/2 && Mathf.Abs(local.z)<c.size.z/2)
@@ -140,7 +141,11 @@ namespace EcoMinecarts.Editor
             var copy=Object.Instantiate(prefab);
             try
             {
-                copy.SetActive(true);copy.GetComponent<Rigidbody>().isKinematic=true;Physics.SyncTransforms();
+                copy.SetActive(true);copy.GetComponent<Rigidbody>().isKinematic=true;
+                // Match Eco placement before testing the occupied cab and entry paths.
+                foreach(var placement in copy.GetComponentsInChildren<ColliderPlacementOptions>(true))
+                    if(placement.RemoveColliderAfterPlacement)foreach(var collider in placement.GetComponents<Collider>())Object.DestroyImmediate(collider);
+                Physics.SyncTransforms();
                 var activeDeck=copy.transform.Find("CabFittings");
                 if(activeDeck.Find("Cab floor").GetComponent<Collider>().attachedRigidbody!=activeDeck.GetComponent<Rigidbody>())
                     throw new Exception("Live cab collider does not belong to walking platform: "+prefab.name);

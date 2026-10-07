@@ -1,0 +1,14 @@
+{
+  "version": "0.2.40",
+  "name": "Railworks Workshop",
+  "ecoVersion": "0.14.1.1 beta release-1079",
+  "prerelease": true,
+  "dllSha256": "831CA5F89C5D4C97AA731D753C79869C9855CB145F2A1BDAD96D268FB846579C",
+  "bundleSha256": "114FE11F3F0E8C6729281B95FF0C8D765B588ECAE5517526E4E43F2601646184",
+  "distributionSha256": "8866399A88D7CAEA843A258CE4D0954961AA704409F1D4170A5A53936F125787",
+  "editableVehicleFiles": 14,
+  "savedDefinitions": 929,
+  "nativeVerified": true,
+  "liveMultiplayerVerified": false,
+  "vanillaMinecartCollisionDetected": false
+}

@@ -29,7 +29,7 @@ public abstract class RailSwitchObject : WorldObject,IRepresentsItem
 }
 public abstract class RailSwitchRecipe<T> : MinecartRailRecipeFamily where T:Item,new()
 {
-    protected RailSwitchRecipe() {var d=RailSwitchDefinition.Find(typeof(T).Name.Replace("Item","")); Configure(MinecartRailRecipes.Make<T>(d.Name,2*d.Footprint,d.Tram||d.Industrial?2*d.Footprint:0,2,hewnLogs:d.Tram||d.Industrial?0:2*d.Footprint,woodenGears:2),d.Name,GetType(),60*d.Footprint,2*d.Footprint);}
+    protected RailSwitchRecipe() {var d=RailSwitchDefinition.Find(typeof(T).Name.Replace("Item","")); var skill=d.Tram?typeof(IndustrySkill):typeof(BasicEngineeringSkill); Configure(MinecartRailRecipes.Make<T>(d.Name,2*d.Footprint,d.Tram||d.Industrial?2*d.Footprint:0,2,hewnLogs:d.Tram||d.Industrial?0:2*d.Footprint,woodenGears:2,skillType:skill),d.Name,GetType(),60*d.Footprint,2*d.Footprint,skillType:skill);}
 }
 [Serialized,LocDisplayName("Standard Rail Left Switch")] public sealed class RailSwitchLeftItem:WorldObjectItem<RailSwitchLeftObject>{}
 [Serialized] public sealed class RailSwitchLeftObject:RailSwitchObject {static RailSwitchLeftObject()=>Occupy<RailSwitchLeftObject>("RailSwitchLeft");}
@@ -51,22 +51,22 @@ public abstract class RailSwitchRecipe<T> : MinecartRailRecipeFamily where T:Ite
 [RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class WideRailSwitchThreeWayRecipe:RailSwitchRecipe<WideRailSwitchThreeWayItem>{}
 [Serialized,LocDisplayName("Tram Rail Left Switch")] public sealed class TramRailSwitchLeftItem:WorldObjectItem<TramRailSwitchLeftObject>{}
 [Serialized] public sealed class TramRailSwitchLeftObject:RailSwitchObject {static TramRailSwitchLeftObject()=>Occupy<TramRailSwitchLeftObject>("TramRailSwitchLeft");}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class TramRailSwitchLeftRecipe:RailSwitchRecipe<TramRailSwitchLeftItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class TramRailSwitchLeftRecipe:RailSwitchRecipe<TramRailSwitchLeftItem>{}
 [Serialized,LocDisplayName("Tram Rail Right Switch")] public sealed class TramRailSwitchRightItem:WorldObjectItem<TramRailSwitchRightObject>{}
 [Serialized] public sealed class TramRailSwitchRightObject:RailSwitchObject {static TramRailSwitchRightObject()=>Occupy<TramRailSwitchRightObject>("TramRailSwitchRight");}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class TramRailSwitchRightRecipe:RailSwitchRecipe<TramRailSwitchRightItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class TramRailSwitchRightRecipe:RailSwitchRecipe<TramRailSwitchRightItem>{}
 [Serialized,LocDisplayName("Tram Rail Three-Way Switch")] public sealed class TramRailSwitchThreeWayItem:WorldObjectItem<TramRailSwitchThreeWayObject>{}
 [Serialized] public sealed class TramRailSwitchThreeWayObject:RailSwitchObject {static TramRailSwitchThreeWayObject()=>Occupy<TramRailSwitchThreeWayObject>("TramRailSwitchThreeWay");}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class TramRailSwitchThreeWayRecipe:RailSwitchRecipe<TramRailSwitchThreeWayItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class TramRailSwitchThreeWayRecipe:RailSwitchRecipe<TramRailSwitchThreeWayItem>{}
 [Serialized,LocDisplayName("Tram Rail Wide-Turn Left Switch")] public sealed class TramWideRailSwitchLeftItem:WorldObjectItem<TramWideRailSwitchLeftObject>{}
 [Serialized] public sealed class TramWideRailSwitchLeftObject:RailSwitchObject {static TramWideRailSwitchLeftObject()=>Occupy<TramWideRailSwitchLeftObject>("TramWideRailSwitchLeft");}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class TramWideRailSwitchLeftRecipe:RailSwitchRecipe<TramWideRailSwitchLeftItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class TramWideRailSwitchLeftRecipe:RailSwitchRecipe<TramWideRailSwitchLeftItem>{}
 [Serialized,LocDisplayName("Tram Rail Wide-Turn Right Switch")] public sealed class TramWideRailSwitchRightItem:WorldObjectItem<TramWideRailSwitchRightObject>{}
 [Serialized] public sealed class TramWideRailSwitchRightObject:RailSwitchObject {static TramWideRailSwitchRightObject()=>Occupy<TramWideRailSwitchRightObject>("TramWideRailSwitchRight");}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class TramWideRailSwitchRightRecipe:RailSwitchRecipe<TramWideRailSwitchRightItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class TramWideRailSwitchRightRecipe:RailSwitchRecipe<TramWideRailSwitchRightItem>{}
 [Serialized,LocDisplayName("Tram Rail Wide-Turn Three-Way Switch")] public sealed class TramWideRailSwitchThreeWayItem:WorldObjectItem<TramWideRailSwitchThreeWayObject>{}
 [Serialized] public sealed class TramWideRailSwitchThreeWayObject:RailSwitchObject {static TramWideRailSwitchThreeWayObject()=>Occupy<TramWideRailSwitchThreeWayObject>("TramWideRailSwitchThreeWay");}
-[RequiresSkill(typeof(BasicEngineeringSkill),3)] public sealed class TramWideRailSwitchThreeWayRecipe:RailSwitchRecipe<TramWideRailSwitchThreeWayItem>{}
+[RequiresSkill(typeof(IndustrySkill),3)] public sealed class TramWideRailSwitchThreeWayRecipe:RailSwitchRecipe<TramWideRailSwitchThreeWayItem>{}
 #if INDUSTRIAL_TRACKS
 [Serialized,LocDisplayName("Industrial Railway Left Switch")] public sealed class IndustrialRailSwitchLeftItem:WorldObjectItem<IndustrialRailSwitchLeftObject>{}
 [Serialized] public sealed class IndustrialRailSwitchLeftObject:RailSwitchObject {static IndustrialRailSwitchLeftObject()=>Occupy<IndustrialRailSwitchLeftObject>("IndustrialRailSwitchLeft");}

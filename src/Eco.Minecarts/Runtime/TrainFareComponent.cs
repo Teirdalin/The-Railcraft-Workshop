@@ -38,12 +38,12 @@ public sealed class TrainFareData
     [Serialized, ThreadSafe] public List<int> Managers { get; set; } = new();
     [Serialized, ThreadSafe] public List<int> FreeUsers { get; set; } = new();
     [Serialized, ThreadSafe] public List<PassengerTicket> Tickets { get; set; } = new();
-    public TrainFareData Copy() => new()
+    public TrainFareData Copy() { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/Copy"); return new()
     {
         ServiceId=ServiceId,ServiceName=ServiceName,OwnerSignature=OwnerSignature,Enabled=Enabled,FreePublic=FreePublic,
         Price=Price,Minutes=Minutes,Currency=Currency,ItemName=ItemName,RevenueUserId=RevenueUserId,Revision=Revision,
         Cars=Cars.ToList(),CarObjects=CarObjects.ToList(),Managers=Managers.ToList(),FreeUsers=FreeUsers.ToList(),Tickets=Tickets.Select(t=>t.Copy()).ToList()
-    };
+    }; }
 }
 
 [Serialized, NoIcon, AutogenClass, LocDisplayName("Passenger Service Fares")]
@@ -58,11 +58,11 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
         .Where(c=>c.Parent.GetComponent<TrainFareComponent>()!=null)
         .OrderByDescending(c=>c.Vehicle.RailSpec.Powered).ThenByDescending(c=>c.Vehicle.DriverPriority).ThenBy(c=>c.Parent.ObjectID)
         .First().Parent.GetComponent<TrainFareComponent>();
-    private TrainFareData Snapshot { get { var service=Service; lock(service.gate) { service.CheckOwner(); return service.data.Copy(); } } }
+    private TrainFareData Snapshot { get { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/TrainFareComponent.Snapshot.get", this.Parent); var service=Service; lock(service.gate) { service.CheckOwner(); return service.data.Copy(); } } }
     public object PersistentData
     {
-        get { lock(gate) return data.Copy(); }
-        set { if(value is TrainFareData saved) lock(gate) data=saved.Copy(); }
+        get { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Persistence/Component snapshots/TrainFareComponent.PersistentData.get", this.Parent); lock(gate) return data.Copy(); }
+        set { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Persistence/Component snapshots/TrainFareComponent.PersistentData.set", this.Parent); if(value is TrainFareData saved) lock(gate) data=saved.Copy(); }
     }
     [SyncToView, Autogen] public string ServiceName => Snapshot.ServiceName;
     public string ServiceId => Snapshot.ServiceId;
@@ -88,11 +88,12 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
     [SyncToView, Autogen, LocDescription("Exact usernames separated by commas; enter none to clear.")] public string FareManagers => UserNames(Snapshot.Managers);
     [SyncToView, Autogen, LocDescription("Exact usernames separated by commas; enter none to clear.")] public string FreePassengers => UserNames(Snapshot.FreeUsers);
     [SyncToView, Autogen, LocDisplayName("Free Travel When Fares Are Off")] public bool FreePublicWhenDisabled => Snapshot.FreePublic;
-    private static RailCouplingComponent[] PassengerCars(TrainFareComponent service) => service.Parent.GetComponent<RailCouplingComponent>().Group().Where(c=>c.Vehicle.RailSpec.PassengerSeats>0).ToArray();
-    private static string UserNames(List<int> ids) => string.Join(", ",UserManager.Users.Where(u=>ids.Contains(u.Id)).Select(u=>u.Name));
+    private static RailCouplingComponent[] PassengerCars(TrainFareComponent service) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/PassengerCars"); return service.Parent.GetComponent<RailCouplingComponent>().Group().Where(c=>c.Vehicle.RailSpec.PassengerSeats>0).ToArray(); }
+    private static string UserNames(List<int> ids) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/UserNames"); return string.Join(", ",UserManager.Users.Where(u=>ids.Contains(u.Id)).Select(u=>u.Name)); }
     private User[] ServiceOwners => Parent.Owners == null ? Array.Empty<User>() : new[] { Parent.Owners }.ToUsers().ToArray();
     private void CheckOwner()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/CheckOwner", this.Parent);
         var signature=string.Join(",",ServiceOwners.Select(u=>u.Id).Order());
         if(data.OwnerSignature==signature) return;
         if(data.OwnerSignature.Length>0)
@@ -106,22 +107,26 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
     }
     private bool CanManage(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/CanManage", this.Parent);
         if(player==null || Parent==null || Parent.IsDestroyed || Vector3.Distance(player.User.Position,Parent.Position)>Vehicle.CouplerOffset+4) return false;
         var service=Service;
         lock(service.gate) { service.CheckOwner(); return service.ServiceOwners.Contains(player.User) || service.data.Managers.Contains(player.User.Id); }
     }
     private void Publish()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/Publish", this.Parent);
         data.Revision++; Parent.SetDirty();
         foreach(var c in Parent.GetComponent<RailCouplingComponent>().Group()) c.Parent.GetComponent<TrainFareComponent>()?.NotifyFields();
     }
     private void NotifyFields()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/NotifyFields", this.Parent);
         foreach(var name in new[]{nameof(ServiceName),nameof(ServiceId),nameof(PaidAccessEnabled),nameof(FarePrice),nameof(Payment),nameof(AccessMinutes),nameof(EligibleCarIds),nameof(ConnectedPassengerCars),nameof(FareRecipient),nameof(FareManagers),nameof(FreePassengers),nameof(FreePublicWhenDisabled)}) this.Changed(name);
     }
-    private void Denied(Player player) => player.InfoBoxLoc($"Only the service owner and designated fare managers can change passenger fares.");
+    private void Denied(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/Denied", this.Parent); player.InfoBoxLoc($"Only the service owner and designated fare managers can change passenger fares."); }
     private void Edit(Player player,Action<TrainFareComponent> change)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/Edit", this.Parent);
         if(!CanManage(player)) { if(player!=null) Denied(player); return; }
         var service=Service;
         lock(service.gate)
@@ -130,18 +135,18 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
             change(service);
         }
     }
-    [RPC] public void SetServiceName(Player player,string value) => Edit(player,service=>
+    [RPC] public void SetServiceName(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetServiceName", this.Parent); Edit(player,service=>
     {
         var name=value?.Trim();
         if(string.IsNullOrEmpty(name)) { player.InfoBoxLoc($"Enter a service name."); return; }
         service.data.ServiceName=name[..Math.Min(name.Length,80)]; service.Publish();
-    });
-    [RPC] public void SetFarePrice(Player player,float value) => Edit(player,service=>
+    }); }
+    [RPC] public void SetFarePrice(Player player,float value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetFarePrice", this.Parent); Edit(player,service=>
     {
         if(!PassengerFareRules.ValidPrice(value,service.data.ItemName.Length>0)) { player.InfoBoxLoc($"Enter a valid fare price."); return; }
         service.data.Price=MathF.Round(value,2); service.Publish();
-    });
-    [RPC] public void SetPayment(Player player,string value) => Edit(player,service=>
+    }); }
+    [RPC] public void SetPayment(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetPayment", this.Parent); Edit(player,service=>
     {
         var payment=value?.Trim()??"";
         Currency? currency=null; string itemName="";
@@ -152,13 +157,13 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
         if((currency==null && item==null) || (item!=null && (Item.TypeIsUnique(item.GetType()) || !PassengerFareRules.ValidPrice(service.data.Price,true))))
         { player.InfoBoxLoc($"Use currency:<exact currency name> or item:<item type name>. Item fares need a whole-number price."); return; }
         service.data.Currency=currency; service.data.ItemName=itemName; service.Publish();
-    });
-    [RPC] public void SetAccessMinutes(Player player,float value) => Edit(player,service=>
+    }); }
+    [RPC] public void SetAccessMinutes(Player player,float value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetAccessMinutes", this.Parent); Edit(player,service=>
     {
         if(!float.IsFinite(value) || value<1 || value>525600) { player.InfoBoxLoc($"Ticket validity must be between 1 and 525600 minutes."); return; }
         service.data.Minutes=value; service.Publish();
-    });
-    [RPC] public void SetEligibleCarIds(Player player,string value) => Edit(player,service=>
+    }); }
+    [RPC] public void SetEligibleCarIds(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetEligibleCarIds", this.Parent); Edit(player,service=>
     {
         var text=value?.Trim()??"";
         var choices=PassengerCars(service);
@@ -174,14 +179,14 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
             }
         }
         service.data.Cars.Clear(); service.data.CarObjects=ids.Distinct().ToList(); service.Publish();
-    });
-    [RPC] public void SetFareRecipient(Player player,string value) => Edit(player,service=>
+    }); }
+    [RPC] public void SetFareRecipient(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetFareRecipient", this.Parent); Edit(player,service=>
     {
         var recipient=service.ServiceOwners.FirstOrDefault(u=>string.Equals(u.Name,value?.Trim(),StringComparison.OrdinalIgnoreCase));
         if(recipient==null) { player.InfoBoxLoc($"The fare recipient must be a service owner."); return; }
         service.data.RevenueUserId=recipient.Id; service.Publish();
-    });
-    private void SetUsers(Player player,string value,bool managers) => Edit(player,service=>
+    }); }
+    private void SetUsers(Player player,string value,bool managers) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetUsers", this.Parent); Edit(player,service=>
     {
         var text=value?.Trim()??"";
         var ids=new List<int>();
@@ -194,24 +199,25 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
             }
         if(managers) service.data.Managers=ids.Distinct().ToList(); else service.data.FreeUsers=ids.Distinct().ToList();
         service.Publish();
-    });
-    [RPC] public void SetFareManagers(Player player,string value) => SetUsers(player,value,true);
-    [RPC] public void SetFreePassengers(Player player,string value) => SetUsers(player,value,false);
-    [RPC] public void SetPaidAccessEnabled(Player player,bool value) => Edit(player,service=>
+    }); }
+    [RPC] public void SetFareManagers(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetFareManagers", this.Parent); SetUsers(player,value,true); }
+    [RPC] public void SetFreePassengers(Player player,string value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetFreePassengers", this.Parent); SetUsers(player,value,false); }
+    [RPC] public void SetPaidAccessEnabled(Player player,bool value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetPaidAccessEnabled", this.Parent); Edit(player,service=>
     {
         if(value && !ValidPayment(service.data)) { player.InfoBoxLoc($"Configure a valid fare and payment first."); return; }
         service.data.Enabled=value; service.Publish();
-    });
-    [RPC] public void SetFreePublicWhenDisabled(Player player,bool value) => Edit(player,service=>
-    { service.data.FreePublic=value; service.Publish(); });
-    private static bool ValidPayment(TrainFareData d) => PassengerFareRules.ValidPrice(d.Price,d.ItemName.Length>0)
+    }); }
+    [RPC] public void SetFreePublicWhenDisabled(Player player,bool value) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/SetFreePublicWhenDisabled", this.Parent); Edit(player,service=>
+    { service.data.FreePublic=value; service.Publish(); }); }
+    private static bool ValidPayment(TrainFareData d) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/ValidPayment"); return PassengerFareRules.ValidPrice(d.Price,d.ItemName.Length>0)
         && (d.Cars.Count==0 || d.CarObjects.Count>0)
         && float.IsFinite(d.Minutes) && d.Minutes>=1 && d.Minutes<=525600
-        && (d.ItemName.Length==0 ? d.Currency!=null : Item.Get(d.ItemName)!=null && !Item.TypeIsUnique(Item.Get(d.ItemName).GetType()));
-    private bool Free(User user,TrainFareData d,RailVehicleObject car) => ServiceOwners.Contains(user) || d.Managers.Contains(user.Id) || d.FreeUsers.Contains(user.Id)
-        || Parent.IsAuthorized(user,AccessType.FullAccess) || car.IsAuthorized(user,AccessType.FullAccess);
+        && (d.ItemName.Length==0 ? d.Currency!=null : Item.Get(d.ItemName)!=null && !Item.TypeIsUnique(Item.Get(d.ItemName).GetType())); }
+    private bool Free(User user,TrainFareData d,RailVehicleObject car) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/Free", this.Parent); return ServiceOwners.Contains(user) || d.Managers.Contains(user.Id) || d.FreeUsers.Contains(user.Id)
+        || Parent.IsAuthorized(user,AccessType.FullAccess) || car.IsAuthorized(user,AccessType.FullAccess); }
     internal bool HasAccess(Player player,RailVehicleObject car)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/HasAccess", this.Parent);
         var service=Service; lock(service.gate)
         {
             service.CheckOwner(); var d=service.data;
@@ -220,11 +226,12 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
             return service.Free(player.User,d,car) || PassengerFareRules.HasTicket(d.Tickets,d.ServiceId,player.User.Id,car.ObjectID,DateTime.UtcNow.Ticks);
         }
     }
-    private static bool BoardingValid(Player player,RailVehicleObject car,int seat) => !car.IsDestroyed && player.User.Player==player
+    private static bool BoardingValid(Player player,RailVehicleObject car,int seat) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/BoardingValid"); return !car.IsDestroyed && player.User.Player==player
         && !player.MountManager.IsMounted && Vector3.Distance(player.User.Position,car.Position)<=car.CouplerOffset+3
-        && seat>0 && seat<=car.RailSpec.PassengerSeats && seat<car.GetComponent<MountComponent>().Seats && car.GetComponent<MountComponent>().OccupantIDs[seat]<0;
+        && seat>0 && seat<=car.RailSpec.PassengerSeats && seat<car.GetComponent<MountComponent>().Seats && car.GetComponent<MountComponent>().OccupantIDs[seat]<0; }
     internal void RequestBoard(Player player,RailVehicleObject car,int seat)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/RequestBoard", this.Parent);
         if(!BoardingValid(player,car,seat) || !Pending.TryAdd(player.User.Id,0)) return;
         _=Task.Run(()=>BoardAsync(player,car,seat));
     }
@@ -243,6 +250,7 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
             if(!await player.ConfirmBoxLoc($"Ride {quote.ServiceName} for {quote.Minutes:0.##} minutes for {quote.Price:0.##} {payment}? Access covers {scope}." ).WaitAsync(TimeSpan.FromMinutes(2))) return;
             lock(service.gate)
             {
+                using var paymentProfile = RailProfile.Measure("Passengers/Fares and payment/Confirmed payment", service.Parent);
                 if(!BoardingValid(player,car,seat) || Service!=service || car.GetComponent<TrainFareComponent>().Service!=service) return;
                 service.CheckOwner();
                 if(service.data.ServiceId!=quote.ServiceId || service.data.Revision!=quote.Revision)
@@ -272,6 +280,7 @@ public sealed class TrainFareComponent : WorldObjectComponent, IPersistentData
     }
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Fares and payment/Tick", this.Parent);
         base.Tick(); if(Vehicle.RailSpec.PassengerSeats==0) return;
         // Revoked/expired tickets block new boarding immediately, but must not
         // throw seated passengers from a moving train or coaster.

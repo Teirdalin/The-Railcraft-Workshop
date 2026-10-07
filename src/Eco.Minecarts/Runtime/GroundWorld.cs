@@ -13,6 +13,7 @@ internal static class GroundWorld
     // cliff edges. Custom non-rail ramp/collision shapes are not inferred as flat.
     public static Vector3? Resolve(Vector3 position, System.Numerics.Quaternion rotation, WorldObject cart)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Collision and ground/Resolve");
         var heights = new List<float>();
         var spec = (cart as RailVehicleObject)?.RailSpec ?? Eco.Minecarts.Physics.RailVehicleSpec.Minecart;
         foreach (var x in new[] { -spec.HalfGauge, spec.HalfGauge })

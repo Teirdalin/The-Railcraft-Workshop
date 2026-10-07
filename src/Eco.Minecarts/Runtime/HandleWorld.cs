@@ -10,10 +10,11 @@ namespace Eco.Minecarts.Runtime;
 internal static class HandleWorld
 {
     public static bool Clear(Vector3 position, WorldObject cart)
-        => TryClear(position, cart, out _);
+        { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Collision and ground/Clear"); return TryClear(position, cart, out _); }
 
     public static bool TryClear(Vector3 position, WorldObject cart, out string reason)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Collision and ground/TryClear");
         // Eco reports the standing player's network origin roughly one voxel
         // below the visible feet on some terrain (confirmed live on
         // RainforestSoilBlock). Lower-body voxel tests therefore mistake the

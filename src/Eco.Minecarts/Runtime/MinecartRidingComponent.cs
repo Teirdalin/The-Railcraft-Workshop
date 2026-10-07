@@ -28,6 +28,7 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
 
     public override void PostInitialize()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/PostInitialize", this.Parent);
         base.PostInitialize();
         this.Storage.AddInvRestriction(new PassengerStorageRestriction(this));
         // All native mount RPCs must also pass this, not only our Shift+E action.
@@ -44,6 +45,7 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
         authRequired: AccessType.ConsumerAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void Ride(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Ride", this.Parent);
         if (!target.ContainsParameter("MinecartStorage") || this.Parent.IsDestroyed || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
         if (this.Mounts.MountedPlayers.Contains(player)) { this.Mounts.TryDismountPlayer(player); return; }
         if (!this.Parent.IsAuthorized(player.User, AccessType.ConsumerAccess)) return;
@@ -70,18 +72,22 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
 
     private void OnMounted()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/OnMounted", this.Parent);
         if (this.StorageLocked) this.Parent.CloseUIForAll(true);
     }
-    private void OnDismounted() { this.boarding = false; this.approvedPlayer = null; this.approvedSeat = 0; }
+    private void OnDismounted() {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/OnDismounted", this.Parent); this.boarding = false; this.approvedPlayer = null; this.approvedSeat = 0; }
 
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Tick", this.Parent);
         // Motion owns rail physics; off-rail gravity belongs to the native
         // client. A passenger must not repeatedly revoke its physics controller.
     }
 
     public override void Destroy()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Destroy", this.Parent);
         this.Mounts.PlayerMountedEvent -= this.OnMounted;
         this.Mounts.PlayerDismountedEvent -= this.OnDismounted;
         this.boarding = false;
@@ -93,9 +99,9 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
 public sealed class PassengerStorageRestriction(MinecartRidingComponent riding) : InventoryRestriction
 {
     public override LocString Message => Localizer.DoStr(string.Empty);
-    public override int MaxAccepted(Item item) => riding.StorageLocked ? 0 : int.MaxValue;
-    public override int MaxAccepted(Item item, int quantity) => this.MaxAccepted(item);
-    public override int MaxAccepted(RestrictionCheckData check, Item item) => this.MaxAccepted(item);
-    public override int MaxAccepted(RestrictionCheckData check, Item item, int quantity) => this.MaxAccepted(item);
-    public override int MaxPickup(RestrictionCheckData check, Item item, int totalMoved) => this.MaxAccepted(item);
+    public override int MaxAccepted(Item item) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/MaxAccepted"); return riding.StorageLocked ? 0 : int.MaxValue; }
+    public override int MaxAccepted(Item item, int quantity) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/MaxAccepted"); return this.MaxAccepted(item); }
+    public override int MaxAccepted(RestrictionCheckData check, Item item) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/MaxAccepted"); return this.MaxAccepted(item); }
+    public override int MaxAccepted(RestrictionCheckData check, Item item, int quantity) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/MaxAccepted"); return this.MaxAccepted(item); }
+    public override int MaxPickup(RestrictionCheckData check, Item item, int totalMoved) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/MaxPickup"); return this.MaxAccepted(item); }
 }

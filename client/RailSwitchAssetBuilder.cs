@@ -54,6 +54,7 @@ namespace EcoMinecarts.Editor
                 var world=root.AddComponent<WorldObject>();root.AddComponent<HighlightableObject>();
                 var iron=materials["MAT_IronBare"];var wood=materials["MAT_WoodRail"];var paint=materials["MAT_IronPainted"];var indicator=materials["MAT_SwitchIndicator"];
                 var street=d.Key.StartsWith("Tram",StringComparison.Ordinal);
+                var bed=street?TrackBlockAssetBuilder.TramBed:wood;
                 world.States=new[]{"RouteLeft","RouteForward","RouteRight"};
                 world.OnStateChangedEvents=new[]{new ChangedStateEvent(),new ChangedStateEvent(),new ChangedStateEvent()};
                 world.OnStateEnabledEvents=new[]{new SetStateEvent(),new SetStateEvent(),new SetStateEvent()};
@@ -64,7 +65,7 @@ namespace EcoMinecarts.Editor
                 var stand=new Vector3(-d.HalfGauge-.22f,-.355f,-d.Footprint*.5f+.16f);
                 var supportLeft=stand.x-.10f;var supportRight=d.HalfGauge+.11f;
                 Box(root.transform,"Switch mounting sleeper",new Vector3((supportLeft+supportRight)/2,-.45f,stand.z),
-                    new Vector3(supportRight-supportLeft,.09f,.29f),street?iron:wood);
+                    new Vector3(supportRight-supportLeft,.09f,.29f),bed);
                 Box(root.transform,"Switch stand base",stand,new Vector3(.16f,.10f,.25f),iron);
                 Box(root.transform,"Switch stand mast",stand+Vector3.up*.26f,new Vector3(.045f,.55f,.045f),iron);
                 Beam(root.transform,"Point operating rod",stand,new Vector3(0,stand.y,stand.z),.035f,.03f,iron);
@@ -117,7 +118,7 @@ namespace EcoMinecarts.Editor
                         var left=Mathf.Max(crossings.Min(),points.Min(p=>p.X)-d.HalfGauge-.11f);
                         var right=Mathf.Min(crossings.Max(),points.Max(p=>p.X)+d.HalfGauge+.11f);
                         Box(root.transform,street?"Street tie":"Turnout sleeper",new Vector3((left+right)/2,-.45f,z),
-                            new Vector3(right-left,street?.055f:.09f,street?.07f:.10f),street?iron:wood);
+                            new Vector3(right-left,street?.055f:.09f,street?.07f:.10f),bed);
                     }
                 }
                 var prefab=PrefabUtility.SaveAsPrefabAsset(root,"Assets/EcoMinecarts/Prefabs/"+root.name+".prefab");Object.DestroyImmediate(root);yield return prefab;

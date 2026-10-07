@@ -119,6 +119,8 @@ namespace EcoMinecarts.Editor
             if(!spec.Pullable) RailModelPolish.Axles(root, spec.Wheelbase, spec.HumanPowered ? .18f : .20f, iron, spec.HalfGauge);
             var body = root.GetComponent<Rigidbody>(); body.mass = spec.EmptyKg;
             if(spec.Powered) RailWheelSuspension.Configure(root,spec.EmptyKg,spec.EmptyKg+spec.CargoKg+500);
+            if(spec.Pullable) RailPullingAssetBuilder.Configure(root,spec.EmptyKg,spec.CargoKg);
+            if(spec.HumanPowered) VehicleRailFitPatch.ConfigureHandcar(root,spec);
             if(spec.Model=="Tram") ConfigureTramGuidedPhysics(root);
             body.centerOfMass = new Vector3(0, .34f, 0); controller.COM.localPosition = body.centerOfMass;
             var world = root.GetComponent<global::Vehicle>();
@@ -131,6 +133,7 @@ namespace EcoMinecarts.Editor
                 foreach(var label in new[]{"Front","Rear"})
                     root.transform.Find("CoupledCoupler"+label).GetComponent<Renderer>().sharedMaterial=wood;
             world.AllVehicleColliders = root.GetComponentsInChildren<Collider>();
+            TramAccessAssetBuilder.Apply(root);
             RailRiderInteractionAssetBuilder.Configure(root, explicitExit:spec.Powered && spec.Model!="Tram");
             return Save(root);
         }
@@ -328,7 +331,7 @@ namespace EcoMinecarts.Editor
                     Box(model,"Standing position",new Vector3(x,.54f,z),new Vector3(.31f,.012f,.36f),wood);
                 }
                 var spot=new GameObject("PassengerSeat"+(i+1));spot.transform.SetParent(root.transform,false);
-                spot.transform.localPosition=new Vector3(x,standing?.54f:.83f+RailRiderFit.SlatSurfaceOffset-RailRiderFit.SeatedHipHeight,z);
+                spot.transform.localPosition=new Vector3(x,standing?.54f:.83f+RailRiderFit.SlatSurfaceOffset-RailRiderFit.SeatedHipHeight+RailRiderFit.TramRiderLift,z);
                 if(!standing && z<0)spot.transform.localRotation=Quaternion.Euler(0,180,0);
                 var mount=spot.AddComponent<MountSpot>();mount.setAsParent=true;
                 mount.overrideAvatarState=(Eco.Animation.AnimationStateManager.AvatarState)(standing?255:3);
@@ -475,6 +478,7 @@ namespace EcoMinecarts.Editor
                 Hit(root.transform, "StationSignCollision", new Vector3(0, 1.35f, 0), new Vector3(.8f, .42f, .08f), null);
                 Hit(root.transform, "StationInteraction", new Vector3(0, .5f, .1f), new Vector3(.48f, .52f, .25f), null);
             }
+            TramAccessAssetBuilder.GroundStation(root);
             return Save(root);
         }
         private static Transform Anchor(GameObject root, string name, Vector3 position)

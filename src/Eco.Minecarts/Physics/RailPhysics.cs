@@ -49,6 +49,7 @@ public static class RailPhysics
         MinecartTuning tuning,
         double deltaSeconds)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Integrate");
         ArgumentOutOfRangeException.ThrowIfNegative(input.CargoMassKg);
         ArgumentOutOfRangeException.ThrowIfNegative(input.Handbrake);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(input.Handbrake, 1);

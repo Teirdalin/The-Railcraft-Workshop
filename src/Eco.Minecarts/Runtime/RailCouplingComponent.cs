@@ -18,15 +18,37 @@ namespace Eco.Minecarts.Runtime;
 public sealed class RailCouplingComponent : WorldObjectComponent
 {
     private static readonly ConcurrentDictionary<int, RailCouplingComponent> Vehicles = new();
-    internal static RailCouplingComponent? NearestTo(Vector3 position, float radius) =>
-        Vehicles.Values.Where(c=>!c.Parent.IsDestroyed && Vector3.DistanceSquared(c.Parent.Position,position)<=radius*radius)
-            .OrderBy(c=>Vector3.DistanceSquared(c.Parent.Position,position)).FirstOrDefault();
+    internal static RailCouplingComponent? NearestTo(Vector3 position, float radius) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/NearestTo"); return Vehicles.Values.Where(c=>!c.Parent.IsDestroyed && Vector3.DistanceSquared(c.Parent.Position,position)<=radius*radius)
+            .OrderBy(c=>Vector3.DistanceSquared(c.Parent.Position,position)).FirstOrDefault(); }
     private static readonly ConcurrentDictionary<Guid, RailCouplingComponent> PersistentVehicles = new();
     private static readonly object LinkGate = new();
+    private static long topologyRevision;
+    private sealed record ConsistSnapshot(long Revision, RailCouplingComponent[] Members);
+    private ConsistSnapshot? consist;
+    private readonly object leaderCacheKey = new();
+    private static void InvalidateConsists()
+    { Interlocked.Increment(ref topologyRevision); RailSimulationFrame.Invalidate(); }
     internal static RailCouplingComponent[] LiveVehicles=>Vehicles.Values.Where(c=>!c.Parent.IsDestroyed).ToArray();
     internal bool RearAvailable=>!this.HasPartner(-1);
+    internal bool EndAvailable(int end) => !this.HasPartner(end);
+    // Rotating the symmetric cart exchanges LOCAL ends, not physical partners.
+    internal void ReverseEnds()
+    {
+        lock (LinkGate)
+        {
+            var front = this.Partner(1);
+            var rear = this.Partner(-1);
+            var frontEnd = this.FrontPartnerEnd;
+            var rearEnd = this.RearPartnerEnd;
+            if (front != null) front.SetPartner(frontEnd, this.Parent.ID, -1);
+            if (rear != null) rear.SetPartner(rearEnd, this.Parent.ID, 1);
+            this.SetPartner(1, rear?.Parent.ID ?? 0, rearEnd);
+            this.SetPartner(-1, front?.Parent.ID ?? 0, frontEnd);
+        }
+    }
     internal bool CoupleLoadedCart(RailCouplingComponent added)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/CoupleLoadedCart", this.Parent);
         lock(LinkGate)
         {
             if(Parent.IsDestroyed||added.Parent.IsDestroyed||!RearAvailable||added.Linked
@@ -44,6 +66,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
              partner.Vehicle.RailSpec.Industrial == node.Vehicle.RailSpec.Industrial && partner.Vehicle.RailSpec.Coaster == node.Vehicle.RailSpec.Coaster)));
     internal void CompleteLoad()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/CompleteLoad", this.Parent);
         foreach (var node in this.Group()) node.AwaitingLoad = false;
     }
     [Serialized] public int FrontPartnerId { get; set; }
@@ -56,36 +79,42 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     [Serialized] public Guid RearPartnerObjectId { get; set; }
     public RailVehicleObject Vehicle => (RailVehicleObject)this.Parent;
     public bool Linked => this.HasPartner(1) || this.HasPartner(-1);
-    private Guid PartnerObjectId(int end) => end > 0 ? this.FrontPartnerObjectId : this.RearPartnerObjectId;
-    private bool HasPartner(int end) => this.PartnerObjectId(end) != Guid.Empty || this.PartnerId(end) != 0;
-    private int PartnerId(int end) => end > 0 ? this.FrontPartnerId : this.RearPartnerId;
-    private int PartnerEnd(int end) => end > 0 ? this.FrontPartnerEnd : this.RearPartnerEnd;
-    public Vector3 Connector(int end) => this.Parent.Position + this.Parent.Rotation.RotateVector(new Vector3(0, .27f, end * this.Vehicle.CouplerOffset));
+    private Guid PartnerObjectId(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PartnerObjectId", this.Parent); return end > 0 ? this.FrontPartnerObjectId : this.RearPartnerObjectId; }
+    private bool HasPartner(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/HasPartner", this.Parent); return this.PartnerObjectId(end) != Guid.Empty || this.PartnerId(end) != 0; }
+    private int PartnerId(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PartnerId", this.Parent); return end > 0 ? this.FrontPartnerId : this.RearPartnerId; }
+    private int PartnerEnd(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PartnerEnd", this.Parent); return end > 0 ? this.FrontPartnerEnd : this.RearPartnerEnd; }
+    public Vector3 Connector(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Connector", this.Parent); return this.Parent.Position + this.Parent.Rotation.RotateVector(new Vector3(0, .27f, end * this.Vehicle.CouplerOffset)); }
     private void SetPartner(int end, int id, int otherEnd)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/SetPartner", this.Parent);
         if (end > 0) { this.FrontPartnerId = id; this.FrontPartnerEnd = otherEnd; }
         else { this.RearPartnerId = id; this.RearPartnerEnd = otherEnd; }
         var guid = id != 0 && Vehicles.TryGetValue(id,out var target) ? target.Parent.ObjectID : Guid.Empty;
         if(end>0) this.FrontPartnerObjectId=guid; else this.RearPartnerObjectId=guid;
+        InvalidateConsists();
         this.Parent.SetAnimatedState(end > 0 ? "CoupledFront" : "CoupledRear", id != 0);
+        this.Parent.GetComponent<MinecartMotionComponent>()?.Changed(nameof(MinecartMotionComponent.VehicleCoupled));
         this.Parent.SetDirty();
     }
     private RailCouplingComponent? RawPartner(int end)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/RawPartner", this.Parent);
         var guid=this.PartnerObjectId(end);
         return guid!=Guid.Empty ? PersistentVehicles.GetValueOrDefault(guid) : Vehicles.GetValueOrDefault(this.PartnerId(end));
     }
-    private bool PointsTo(int end,RailCouplingComponent other) => Math.Abs(end)==1 &&
-        (this.PartnerObjectId(end)!=Guid.Empty ? this.PartnerObjectId(end)==other.Parent.ObjectID : this.PartnerId(end)==other.Parent.ID);
-    private RailCouplingComponent? Partner(int end) => this.RawPartner(end) is {} other && other!=this
+    private bool PointsTo(int end,RailCouplingComponent other) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PointsTo", this.Parent); return Math.Abs(end)==1 &&
+        (this.PartnerObjectId(end)!=Guid.Empty ? this.PartnerObjectId(end)==other.Parent.ObjectID : this.PartnerId(end)==other.Parent.ID); }
+    private RailCouplingComponent? Partner(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Partner", this.Parent); return this.RawPartner(end) is {} other && other!=this
         && !other.Parent.IsDestroyed && Math.Abs(this.PartnerEnd(end))==1
-        && other.PointsTo(this.PartnerEnd(end),this) && other.PartnerEnd(this.PartnerEnd(end))==end ? other : null;
+        && other.PointsTo(this.PartnerEnd(end),this) && other.PartnerEnd(this.PartnerEnd(end))==end ? other : null; }
 
     public override void PostInitialize()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PostInitialize", this.Parent);
         base.PostInitialize();
         Vehicles[this.Parent.ID] = this;
         PersistentVehicles[this.Parent.ObjectID] = this;
+        InvalidateConsists();
         this.AwaitingLoad = this.Linked;
         if (this.AwaitingLoad) this.Vehicle.SetRailGuidance(true);
         this.Parent.SetAnimatedState("VehicleCollisionsEnabled", true);
@@ -94,6 +123,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     }
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Tick", this.Parent);
         base.Tick();
         this.ReconcileLoadedLinks(WorldObjectManager.Init.Initialized);
         if (this.AwaitingLoad) return;
@@ -103,11 +133,13 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     }
     public override void Destroy()
     {
-        lock (LinkGate) { this.Disconnect(1); this.Disconnect(-1); Vehicles.TryRemove(this.Parent.ID, out _); PersistentVehicles.TryRemove(this.Parent.ObjectID,out _); }
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Destroy", this.Parent);
+        lock (LinkGate) { this.Disconnect(1); this.Disconnect(-1); Vehicles.TryRemove(this.Parent.ID, out _); PersistentVehicles.TryRemove(this.Parent.ObjectID,out _); InvalidateConsists(); }
         base.Destroy();
     }
     internal void ReconcileLoadedLinks(bool worldReady)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/ReconcileLoadedLinks", this.Parent);
         // Eco completes every loaded object's PostInitialize before marking
         // WorldObjectManager.Init initialized. Never use a timeout as deletion evidence.
         if(!worldReady || !this.Parent.Initialized || !this.AwaitingLoad) return;
@@ -146,6 +178,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     }
     private void Disconnect(int end)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Disconnect", this.Parent);
         var other = this.Partner(end);
         var otherEnd = this.PartnerEnd(end);
         this.SetPartner(end, 0, 0);
@@ -156,38 +189,128 @@ public sealed class RailCouplingComponent : WorldObjectComponent
 
     public RailCouplingComponent[] Group()
     {
-        var seen = new HashSet<int>(); var result = new List<RailCouplingComponent>();
-        void Visit(RailCouplingComponent node)
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Group", this.Parent);
+        var cached = Volatile.Read(ref this.consist);
+        if (cached?.Revision == Volatile.Read(ref topologyRevision)) return cached.Members;
+        lock (LinkGate)
         {
-            if (!seen.Add(node.Parent.ID)) return;
-            result.Add(node);
-            foreach (var end in new[] { -1, 1 })
-                if (node.Partner(end) is { } next && next.Vehicle.RailSpec.Industrial == this.Vehicle.RailSpec.Industrial && next.Vehicle.RailSpec.Coaster == this.Vehicle.RailSpec.Coaster) Visit(next);
+            var version = Volatile.Read(ref topologyRevision);
+            cached = this.consist;
+            if (cached?.Revision == version) return cached.Members;
+            var seen = new HashSet<int>(); var result = new List<RailCouplingComponent>();
+            void Visit(RailCouplingComponent node)
+            {
+                if (!seen.Add(node.Parent.ID)) return;
+                result.Add(node);
+                for (var end = -1; end <= 1; end += 2)
+                    if (node.Partner(end) is { } next && next.Vehicle.RailSpec.Industrial == this.Vehicle.RailSpec.Industrial && next.Vehicle.RailSpec.Coaster == this.Vehicle.RailSpec.Coaster) Visit(next);
+            }
+            Visit(this);
+            var members = result.ToArray();
+            Volatile.Write(ref this.consist, new ConsistSnapshot(version, members));
+            return members;
         }
-        Visit(this); return result.ToArray();
     }
-    public RailCouplingComponent Leader() => this.Group().OrderByDescending(x => x.Parent.GetComponent<MountComponent>().Driver != null)
-        .ThenByDescending(x => x.Vehicle.DriverPriority).ThenBy(x => x.Parent.ID).First();
+    internal int FacingRelativeTo(RailCouplingComponent member)
+    {
+        // Coupler endpoints carry orientation even through a tight bend, where
+        // comparing two cars' world-space forward vectors would be ambiguous.
+        lock (LinkGate)
+        {
+            var seen = new HashSet<int>();
+            var pending = new Queue<(RailCouplingComponent Car, int Facing)>();
+            pending.Enqueue((this, 1));
+            while (pending.TryDequeue(out var node))
+            {
+                if (!seen.Add(node.Car.Parent.ID)) continue;
+                if (node.Car == member) return node.Facing;
+                for (var end = -1; end <= 1; end += 2)
+                    if (node.Car.Partner(end) is { } next)
+                        pending.Enqueue((next, node.Facing * -end * node.Car.PartnerEnd(end)));
+            }
+            return 0; // The touched car was disconnected before the shove.
+        }
+    }
+    private static RailCouplingComponent SelectLeader(RailCouplingComponent[] group)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/SelectLeader");
+        var best=group[0];
+        foreach(var candidate in group)
+        {
+            var occupied=candidate.Parent.GetComponent<MountComponent>().Driver!=null;
+            var bestOccupied=best.Parent.GetComponent<MountComponent>().Driver!=null;
+            if(occupied&&!bestOccupied || occupied==bestOccupied
+                && (candidate.Vehicle.DriverPriority>best.Vehicle.DriverPriority
+                    || candidate.Vehicle.DriverPriority==best.Vehicle.DriverPriority && candidate.Parent.ID<best.Parent.ID)) best=candidate;
+        }
+        return best;
+    }
+    public RailCouplingComponent Leader()
+    {
+        using var scope = RailProfile.Measure("Vehicle Simulation/Coupling and consists/Leader", this.Parent);
+        if (RailSimulationFrame.Get<RailCouplingComponent>(leaderCacheKey) is { } cached) return cached;
+        var leader = SelectLeader(this.Group()); RailSimulationFrame.Set(leaderCacheKey, leader); return leader;
+    }
     public bool IsFollower => this.Linked && this.Leader() != this;
     public bool CanBoard => !this.Group().Any(x => x.AwaitingLoad || x != this && x.Parent.GetComponent<MountComponent>().Driver != null);
-    internal static bool OccupiesSwitch(VoxelRail rail,float radius,HashSet<int>? exclude=null)=>Vehicles.Values.Any(x=>!x.Parent.IsDestroyed
+    internal static bool OccupiesSwitch(VoxelRail rail,float radius,HashSet<int>? exclude=null){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/OccupiesSwitch"); return Vehicles.Values.Any(x=>!x.Parent.IsDestroyed
         && (exclude==null || !exclude.Contains(x.Parent.ID))
         && Math.Abs(x.Parent.Position.Y-rail.Point(0).Y)<2
         && Math.Abs(x.Parent.Position.X-rail.Cell.X)<radius+x.Vehicle.CouplerOffset+.4f
-        && Math.Abs(x.Parent.Position.Z-rail.Cell.Z)<radius+x.Vehicle.CouplerOffset+.4f);
-    internal TrainLoad Load => new(this.Vehicle.RailSpec,
+        && Math.Abs(x.Parent.Position.Z-rail.Cell.Z)<radius+x.Vehicle.CouplerOffset+.4f); }
+    internal TrainLoad Load { get { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/RailCouplingComponent.Load.get", this.Parent); return new(this.Vehicle.RailSpec,
         this.Parent.GetComponent<Eco.Gameplay.Components.Storage.PublicStorageComponent>().Inventory.NonEmptyStacks.Sum(s => (double)s.Weight) / 1000,
         FuelMass(this.Parent),
-        this.Parent.GetComponent<MountComponent>().MountedPlayers.Count());
+        this.Parent.GetComponent<MountComponent>().MountedPlayers.Count()); } }
     private static double FuelMass(WorldObject obj)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/FuelMass");
         var fuel = obj.GetComponent<Eco.Gameplay.Components.Storage.FuelSupplyComponent>();
         if (fuel == null) return 0;
         var stored = fuel.Inventory.NonEmptyStacks.Sum(s => (double)s.Weight) / 1000;
         return stored + (fuel.CurrentFuel?.Weight ?? 0) / 1000d * Math.Clamp(fuel.Energy / Math.Max(1,fuel.PeakEnergy),0,1);
     }
-    internal TrainPerformance Performance => new(this.Group().Select(x => x.Load).ToArray(), this.Leader().Vehicle.RailSpec);
+    internal TrainPerformance Performance
+    {
+        get
+        { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/RailCouplingComponent.Performance.get", this.Parent);
+            if (RailSimulationFrame.Get<TrainPerformance>(this) is { } cached) return cached;
+            var group=this.Group();
+            var loads=new TrainLoad[group.Length];
+            for(var i=0;i<group.Length;i++) loads[i]=group[i].Load;
+            var performance = new TrainPerformance(loads,this.Leader().Vehicle.RailSpec);
+            RailSimulationFrame.Set(this, performance); return performance;
+        }
+    }
     internal double TrailingMass => this.Group().Where(x => x != this).Sum(x => x.Load.Mass);
+    private readonly object gradeCacheKey = new();
+    private sealed record GradeSample(float Value);
+    internal float ConsistGrade(float rootGrade, int rootFacing)
+    {
+        if (!this.Linked) return rootGrade;
+        if (RailSimulationFrame.Get<GradeSample>(gradeCacheKey) is {} cached) return cached.Value;
+        var members=this.Group();var performance=this.Performance;
+        var orientations=new Dictionary<RailCouplingComponent,int>();
+        void Visit(RailCouplingComponent car,int orientation)
+        {
+            if(!orientations.TryAdd(car,orientation))return;
+            for(var end=-1;end<=1;end+=2)
+                if(car.Partner(end) is {} next)Visit(next,orientation*-end*car.PartnerEnd(end));
+        }
+        lock(LinkGate)Visit(this,1);
+        double weighted=0;
+        for(var i=0;i<members.Length;i++)
+        {
+            var car=members[i];var grade=rootGrade;
+            if(car!=this && car.Parent.GetComponent<MinecartMotionComponent>() is {} motion
+                && motion.BoundConsistPose is {} pose && orientations.TryGetValue(car,out var orientation))
+                grade=RailGuidance.AxleTangent(pose.Rail,pose.T,motion.NextRail,car.Vehicle.RailSpec.Wheelbase/2).Y
+                    *pose.Facing*orientation*rootFacing;
+            weighted+=performance.Cars[i].Mass*grade;
+        }
+        var value=(float)(weighted/Math.Max(1,performance.Mass));
+        RailSimulationFrame.Set(gradeCacheKey,new GradeSample(value));return value;
+    }
 
     // Handles can occlude the low connector from above. Route the same modified
     // click through their explicit endpoint instead of requiring a pixel-perfect ray.
@@ -195,7 +318,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
         requiredEnvVars: new[] { "MinecartHandle" }, interactionDistance: 3, priority: 100,
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void ToggleFromHandle(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
-        => this.Toggle(player, trigger, target);
+        { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/ToggleFromHandle", this.Parent); this.Toggle(player, trigger, target); }
 
     // The broad coaster end target supports both shove and coupling, so it
     // cannot hide the low connector's action when viewed from above.
@@ -204,6 +327,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void ToggleFromCoasterEnd(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/ToggleFromCoasterEnd", this.Parent);
         if (this.Vehicle.RailSpec.Coaster) this.Toggle(player, trigger, target);
     }
 
@@ -212,6 +336,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void Toggle(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Toggle", this.Parent);
         if ((!target.TryGetParameter("RailCoupler", out var raw) && !target.TryGetParameter("MinecartHandle", out raw)
             && !target.TryGetParameter("CoasterEnd", out raw))
             || !int.TryParse(raw?.ToString(), out var end) || Math.Abs(end) != 1
@@ -247,6 +372,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
 
     internal float ContactFraction(Vector3 from, Quaternion rotation, Vector3 to, Quaternion nextRotation)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Collision/ContactFraction", this.Parent);
         var ids = this.Group().Select(x => x.Parent.ID).ToHashSet();
         return VehicleBounds.TravelFraction(new(from, rotation, this.Vehicle.ContactHalfSize), new(to, nextRotation, this.Vehicle.ContactHalfSize),
             Vehicles.Values.Where(x => !x.Parent.IsDestroyed && !ids.Contains(x.Parent.ID)).Select(x =>
@@ -254,21 +380,27 @@ public sealed class RailCouplingComponent : WorldObjectComponent
     }
     internal void BreakConnections()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/BreakConnections", this.Parent);
+        RailCouplingComponent[] members;
         lock (LinkGate)
         {
-            foreach (var member in this.Group())
-            {
-                member.Parent.GetComponent<MinecartMotionComponent>().Handbrake = true;
-                member.Parent.GetComponent<MinecartMotionComponent>().CommandBrake = true;
-                if(member.Parent.GetComponent<TrainControllerComponent>() is {} controller) controller.Autopilot=false;
-            }
+            members=this.Group();
             this.Disconnect(-1); this.Disconnect(1);
         }
+        // Motion ticks acquire their motion gate before LinkGate. Brake setters
+        // wake sleeping components, so never invoke them in the inverse order.
+        foreach (var member in members)
+        {
+            member.Parent.GetComponent<MinecartMotionComponent>().Handbrake=true;
+            member.Parent.GetComponent<MinecartMotionComponent>().CommandBrake=true;
+            if(member.Parent.GetComponent<TrainControllerComponent>() is {} controller) controller.Autopilot=false;
+        }
     }
-    private static Quaternion ToQuaternion(WorldObject obj) => new(obj.Rotation.x, obj.Rotation.y, obj.Rotation.z, obj.Rotation.w);
+    private static Quaternion ToQuaternion(WorldObject obj) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/ToQuaternion"); return new(obj.Rotation.x, obj.Rotation.y, obj.Rotation.z, obj.Rotation.w); }
 
     internal double LimitTrainTravel(VoxelRail rail, float parameter, double travel)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/LimitTrainTravel", this.Parent);
         var motion = this.Parent.GetComponent<MinecartMotionComponent>();
         var rootFacing = Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ), rail.Profile.Tangent(parameter)) < 0 ? -1 : 1;
         // Track parameter direction and the body's facing are separate. Walk
@@ -309,6 +441,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
 
     internal bool FollowTrain(VoxelRail rail, float t, int facing, Vector3 velocity, bool restoring = false)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/FollowTrain", this.Parent);
         var motion = this.Parent.GetComponent<MinecartMotionComponent>();
         var poses = new List<Action>();
         var valid = true;
@@ -344,7 +477,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
                 }
                 var nextT = Math.Clamp(travelled / nextRail.Profile.Length, 0, 1);
                 var childFacing = direction * -end * childEnd;
-                var speed = Vector3.Dot(velocity, rail.Profile.Tangent(t) * facing);
+                var speed = Vector3.Dot(velocity, RailGuidance.AxleTangent(rail,t,motion.NextRail,this.Vehicle.RailSpec.Wheelbase/2) * facing);
                 // A reversed car has the opposite facing, not opposite travel.
                 var childVelocity = RailGuidance.AxleTangent(nextRail, nextT, motion.NextRail, child.Vehicle.RailSpec.Wheelbase / 2) * travelDirection * speed;
                 var childMotion = child.Parent.GetComponent<MinecartMotionComponent>();
@@ -365,6 +498,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
 
     private void FollowFreeBranch(RailCouplingComponent parent, RailCouplingComponent child, int end, int childEnd, Vector3 velocity)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/FollowFreeBranch", this.Parent);
         var forward = parent.Parent.Rotation.RotateVector(Vector3.UnitZ);
         var childForward = child.Parent.Rotation.RotateVector(Vector3.UnitZ);
         if (childForward.LengthSquared() < .001f) childForward = forward * -end * childEnd;
@@ -376,6 +510,7 @@ public sealed class RailCouplingComponent : WorldObjectComponent
 
     internal void FollowFree(Vector3 velocity)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/FollowFree", this.Parent);
         var seen = new HashSet<int> { this.Parent.ID };
         void Visit(RailCouplingComponent parent)
         {

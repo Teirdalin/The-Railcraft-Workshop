@@ -14,9 +14,9 @@ using Eco.Shared.Serialization;
 [Serialized,LocDisplayName("Tram Stop"),LocDescription("Compact street-side boarding stop. Name it and set its dwell time and served lines. Trams brake automatically and repeat their configured stop route."),Weight(6000)]
 public sealed class TramStopItem : WorldObjectItem<TramStopObject> { }
 
-[RequiresSkill(typeof(BasicEngineeringSkill),3)]
+[RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class TramStopRecipe : MinecartRailRecipeFamily
-{ public TramStopRecipe()=>Configure(MinecartRailRecipes.Make<TramStopItem>("Tram Stop",2,4),"Tram Stop",typeof(TramStopRecipe),60,2); }
+{ public TramStopRecipe()=>Configure(MinecartRailRecipes.Make<TramStopItem>("Tram Stop",2,4, skillType:typeof(IndustrySkill)),"Tram Stop",typeof(TramStopRecipe),60,2, skillType:typeof(IndustrySkill)); }
 
 [Serialized,RequireComponent(typeof(PropertyAuthComponent)),RequireComponent(typeof(TrainStationComponent))]
 [RequireComponent(typeof(TramStopComponent)),RequireComponent(typeof(RailAutomationComponent))]

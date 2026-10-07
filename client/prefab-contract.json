@@ -1,0 +1,121 @@
+{
+  "status": "Historical reference values below, not the current generated contract. client/*.cs are authoritative: cart and locomotive use dynamic Rigidbody, SyncPhysics, native Vehicle/RCC/Mountable/WaitForGround; the server guides unmounted rail travel. MineTrainAssetBuilder adds native fuel-driven seated controls and exhaust. See Documentation/28-Mine-Train-and-Native-Powered-Cart.md.",
+  "target": {
+    "ecoVersion": "0.14.1.1 beta release-1079",
+    "unityVersion": "6000.3.6f1",
+    "bundleName": "EcoMinecarts.unity3d"
+  },
+  "worldObjects": [
+    {
+      "name": "MinecartObject",
+      "model": "Assets/Minecart/Models/Minecart.fbx",
+      "collisionModel": "Assets/Minecart/Collision/Minecart_Collision.glb",
+      "components": [
+        "Rigidbody",
+        "SyncPhysics",
+        "WrapTarget",
+        "NetObjComponent",
+        "Vehicle",
+        "RCCCarControllerV2",
+        "LimitVelocity",
+        "Mountable",
+        "WaitForGround"
+      ],
+      "rigidbody": {
+        "massKg": 280.0,
+        "linearDamping": 0.02,
+        "angularDamping": 0.05,
+        "interpolation": "Interpolate",
+        "collisionDetection": "ContinuousDynamic",
+        "centerOfMass": [0.0, 0.24, 0.0]
+      },
+      "syncPhysics": {
+        "SyncPos": true,
+        "SyncVelocity": false,
+        "UseBaseVelocity": false,
+        "LimitVelocity": false,
+        "VelocityLimit": 12.0,
+        "SyncRot": true,
+        "RotSyncMode": 7,
+        "ManuallyUpdated": false,
+        "distanceToIgnorePhysics": 25.0,
+        "snapDistance": 5.0,
+        "maxDepenetationVelocity": 0.2,
+        "AutomaticChunkDepenetrationEnabled": true
+      },
+      "vehicle": {
+        "occupancySize": [1, 1, 2],
+        "hasOccupancy": true,
+        "overrideOccupancy": true,
+        "interactable": true,
+        "wheelLayer": "IgnoreInteraction",
+        "syncWheelPositions": false,
+        "seats": 1
+      },
+      "controller": {
+        "footPoweredCart": true,
+        "automaticGear": true,
+        "autoReverse": true,
+        "engineTorque": 2200.0,
+        "maxSpeedBlocksPerSecond": 10.0,
+        "brakeForce": 4800.0,
+        "steerAngle": 0.0,
+        "highSpeedSteerAngle": 0.0,
+        "maxAngularSpeed": 6.0,
+        "downForce": 0.0,
+        "autoBrakeWhenNotUsingGas": false,
+        "ABS": false,
+        "TCS": false,
+        "ESP": false,
+        "steeringHelper": false,
+        "applyCounterSteering": false
+      },
+      "wheels": {
+        "radius": 0.15,
+        "wheelbase": 0.82,
+        "gaugeBetweenCenters": 0.60,
+        "suspensionDistance": 0.025,
+        "visualObjects": ["Wheel_FL", "Wheel_FR", "Wheel_RL", "Wheel_RR"]
+      },
+      "mount": {
+        "seatAnchor": "Seat_Anchor",
+        "handleDismount": true,
+        "blockDismountWhenNoExit": true,
+        "freezeWhenUnmounted": false
+      }
+    },
+    {
+      "name": "StraightMinecartRailObject",
+      "model": "Assets/Minecart/Models/Rail_Straight.fbx",
+      "collisionModel": "Assets/Minecart/Collision/Rail_Straight_Collision.glb",
+      "sockets": [[0, 0, 0], [0, 0, 1]]
+    },
+    {
+      "name": "CurvedMinecartRailObject",
+      "model": "Assets/Minecart/Models/Rail_Curve90_R3.fbx",
+      "collisionModel": "Assets/Minecart/Collision/Rail_Curve90_R3_Collision.glb",
+      "sockets": [[0, 0, 0], [3, 0, 3]],
+      "centerlineRadius": 3.0
+    },
+    {
+      "name": "SlopedMinecartRailObject",
+      "model": "Assets/Minecart/Models/Rail_Slope_1x4.fbx",
+      "collisionModel": "Assets/Minecart/Collision/Rail_Slope_1x4_Collision.glb",
+      "sockets": [[0, 0, 0], [0, 1, 4]]
+    },
+    {
+      "name": "MinecartBufferStopObject",
+      "model": "Assets/Minecart/Models/Buffer_Stop.fbx",
+      "collisionModel": "Assets/Minecart/Collision/Buffer_Stop_Collision.glb",
+      "socket": [0, 0, 0],
+      "impactAnchor": [0, 0.255, 0.545]
+    }
+  ],
+  "railGuidance": {
+    "method": "existing WheelCollider vehicle plus low guide colliders",
+    "railGauge": 0.60,
+    "guideClearancePerSide": 0.012,
+    "curveGuideSegments": 24,
+    "note": "Guide colliders act below the underframe and must not contact the visible hopper collider."
+  }
+}

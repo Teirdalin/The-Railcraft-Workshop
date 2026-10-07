@@ -21,21 +21,26 @@ public sealed class TramStopComponent : WorldObjectComponent
     [Serialized] private TramStopDirection direction;
     [SyncToView,Autogen,PropReadOnly] public string StopName=>stopName;
     [SyncToView,Autogen,PropReadOnly,LocDisplayName("Served Lines")] public string Lines=>lines.Length==0?"All lines":lines;
-    [SyncToView,Autogen,PropReadOnly,LocDisplayName("Waiting Time (seconds)")] public float DwellSeconds=>dwellSeconds;
+    [SyncToView,Autogen,PropReadOnly,LocDisplayName("Default Waiting Time (seconds)"),LocDescription("Used only when Station Departure has no configured conditions.")] public float DwellSeconds=>dwellSeconds;
     [SyncToView,Autogen,PropReadOnly] public string Direction=>direction==TramStopDirection.Both?"Both directions":direction==TramStopDirection.Forward?"Forward only":"Reverse only";
     [SyncToView,Autogen,PropReadOnly] public string Status=>stopEnabled?"Serving trams":"Closed";
-    private bool CanConfigure(Player player)=>player!=null&&!Parent.IsDestroyed&&Parent.IsAuthorized(player.User,AccessType.FullAccess)
-        &&Vector3.Distance(player.User.Position,Parent.Position)<=5;
+    private bool CanConfigure(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/CanConfigure", this.Parent); return player!=null&&!Parent.IsDestroyed&&Parent.IsAuthorized(player.User,AccessType.FullAccess)
+        &&Vector3.Distance(player.User.Position,Parent.Position)<=5; }
     [RPC,Autogen] public void ToggleStop(Player player)
-    {if(!CanConfigure(player))return;stopEnabled=!stopEnabled;Publish();}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/ToggleStop", this.Parent);if(!CanConfigure(player))return;stopEnabled=!stopEnabled;Publish();}
     [RPC,Autogen] public void IncreaseDwell(Player player)
-    {if(!CanConfigure(player))return;dwellSeconds=Math.Min(600,dwellSeconds+5);Publish();}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/IncreaseDwell", this.Parent);if(!CanConfigure(player))return;dwellSeconds=Math.Min(600,dwellSeconds+5);Publish();}
     [RPC,Autogen] public void DecreaseDwell(Player player)
-    {if(!CanConfigure(player))return;dwellSeconds=Math.Max(0,dwellSeconds-5);Publish();}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/DecreaseDwell", this.Parent);if(!CanConfigure(player))return;dwellSeconds=Math.Max(0,dwellSeconds-5);Publish();}
     [RPC,Autogen] public void CycleDirection(Player player)
-    {if(!CanConfigure(player))return;direction=(TramStopDirection)(((int)direction+1)%3);Publish();}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/CycleDirection", this.Parent);if(!CanConfigure(player))return;direction=(TramStopDirection)(((int)direction+1)%3);Publish();}
     [RPC,Autogen] public void RenameStop(Player player)
-    {if(CanConfigure(player))_=EditName(player);}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/RenameStop", this.Parent);if(CanConfigure(player))_=EditName(player);}
     private async Task EditName(Player player)
     {
         var text=await player.InputString(Localizer.DoStr("Tram stop name"),Localizer.DoStr(stopName));
@@ -43,7 +48,8 @@ public sealed class TramStopComponent : WorldObjectComponent
         stopName=text.Trim();Publish();
     }
     [RPC,Autogen] public void SetServedLines(Player player)
-    {if(CanConfigure(player))_=EditLines(player);}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/SetServedLines", this.Parent);if(CanConfigure(player))_=EditLines(player);}
     private async Task EditLines(Player player)
     {
         var text=await player.InputString(Localizer.DoStr("Allowed line names, separated by commas. Enter all for every line."),Localizer.DoStr(lines.Length==0?"all":lines));
@@ -53,12 +59,19 @@ public sealed class TramStopComponent : WorldObjectComponent
     }
     internal bool Accepts(TramRouteComponent? tram,int travelDirection)
     {
-        if(!stopEnabled||tram==null||!tram.Servicing||!tram.Wants(stopName))return false;
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/Accepts", this.Parent);
+        if(tram==null||!tram.Servicing||!tram.Wants(stopName))return false;
+        return Compatible(tram,travelDirection);
+    }
+    internal bool Compatible(TramRouteComponent tram,int travelDirection)
+    {
+        if(!stopEnabled)return false;
         if(direction==TramStopDirection.Forward&&travelDirection<0||direction==TramStopDirection.Reverse&&travelDirection>0)return false;
         return lines.Length==0||lines.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
             .Any(line=>string.Equals(line,tram.LineName,StringComparison.OrdinalIgnoreCase));
     }
-    internal bool Ready(double elapsed)=>!stopEnabled||elapsed>=dwellSeconds;
+    internal bool Ready(double elapsed){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/Ready", this.Parent); return !stopEnabled||elapsed>=dwellSeconds; }
     private void Publish()
-    {this.Changed(nameof(StopName));this.Changed(nameof(Lines));this.Changed(nameof(DwellSeconds));this.Changed(nameof(Direction));this.Changed(nameof(Status));Parent.SetDirty();}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/Publish", this.Parent); TrainStationComponent.RoutingChanged(); this.Changed(nameof(StopName));this.Changed(nameof(Lines));this.Changed(nameof(DwellSeconds));this.Changed(nameof(Direction));this.Changed(nameof(Status));Parent.SetDirty();}
 }

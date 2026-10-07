@@ -11,7 +11,11 @@ namespace EcoMinecarts.Editor
         public const float SeatedHipHeight = .64f;
         // Raise the avatar attachment, leaving the bench and dismount deck in place.
         public const float RiderLift = .10f;
-        public static float Lift(GameObject root) => root.name == "RollerCoasterCartObject" ? 0 : RiderLift;
+        // Tram passengers were still visibly sunk into the bench. Keep this
+        // separate from train and coaster seats, and leave standing spots alone.
+        public const float TramRiderLift = .20f;
+        public static float Lift(GameObject root) => root.name == "RollerCoasterCartObject" ? 0
+            : root.name == "HeritageTramObject" ? TramRiderLift : RiderLift;
         public const float SlatSurfaceOffset = .015f;
         public const float CoasterCushionCentre = .91f;
         public const float CoasterCushionThickness = .13f;
@@ -97,6 +101,12 @@ namespace EcoMinecarts.Editor
                 var p = seat.transform.localPosition;
                 if (Mathf.Abs(p.y + SeatedHipHeight - Lift(root) - Surface(root, seat)) > .002f)
                     throw new Exception(root.name + ": seated attachment does not match requested lift " + seat.name);
+                if (root.name == "HeritageTramObject")
+                {
+                    var roof = root.GetComponentsInChildren<Transform>(true).Single(t => t.name == "Canopy roof");
+                    if (roof.GetComponent<Renderer>().bounds.min.y - seat.transform.position.y < 1.85f)
+                        throw new Exception(root.name + ": raised tram passenger lacks canopy clearance " + seat.name);
+                }
                 var direction = root.name == "HeritageTramObject" && p.z < 0 ? Vector3.back : Vector3.forward;
                 if (Vector3.Dot(seat.transform.localRotation * Vector3.forward, direction) < .999f)
                     throw new Exception(root.name + ": passenger faces into backrest " + seat.name);

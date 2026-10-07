@@ -36,6 +36,7 @@ public sealed class StraightRailSegment : IRailSegment
 
     public RailPose Sample(double distance)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Sample");
         var s = Math.Clamp(distance, 0, this.Length);
         return new RailPose(
             this.start + this.tangent * (float)s,
@@ -75,6 +76,7 @@ public sealed class ArcRailSegment : IRailSegment
 
     public RailPose Sample(double distance)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Sample");
         var fraction = Math.Clamp(distance / this.Length, 0, 1);
         var angle = this.startRadians + this.sweepRadians * fraction;
         var sign = Math.Sign(this.sweepRadians);
@@ -106,6 +108,7 @@ public sealed class RailPath
     /// <summary>Resolves distance while preserving overshoot across any number of segment boundaries.</summary>
     public (IRailSegment Segment, double LocalDistance, RailPose Pose) Sample(double pathDistance)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Sample");
         var remaining = Math.Clamp(pathDistance, 0, this.Length);
         foreach (var segment in this.segments)
         {

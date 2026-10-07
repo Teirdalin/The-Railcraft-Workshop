@@ -301,4 +301,3 @@ public sealed class WoodenTrackSlope4270Block : Block, IRepresentsItem, IWaterLo
 {
     public Type RepresentedItemType => typeof(WoodenTrackItem);
 }
-

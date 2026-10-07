@@ -1,13 +1,42 @@
-# The Railcraft Workshop
+# Railworks Workshop
 
 Rails, minecarts, trains, trams, and roller coasters for **Eco 0.14.1.1 beta release-1079**.
 
-**Latest packaged version:** [0.1.0 prerelease](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.1.0). Download `Railcraft-0-1-0.zip`; it contains only the server DLL and matching Unity asset bundle. Back up the world and current mod pair, stop the Eco server, and copy `Eco.Minecarts.dll` and `EcoMinecarts.unity3d` together into `Mods/UserCode`. Keep only one copy of each under `Mods`, then restart the server. Keep backups outside `Mods`.
+**Latest packaged version: [0.2.40 prerelease](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.2.40).**
 
-This build includes one-block coaster stations and station cart placement, corkscrews and descending coils, compact coaster transitions, front/rear shove and coupling controls, hammer-only chain power/direction indicators, workbench improvements, and material-based map colors and distant textures for all 568 custom blocks.
+Download `Railworks-Workshop-0-2-40.zip`. It contains the matching `Railworks.dll` and `Railworks.unity3d`, plus a `Vehicles` folder with 14 editable C# files and a customization guide.
 
-**Testing status:** server and bundle builds and package checks passed. The newest overlays and distant appearance still need in-game verification. A Linux server with an existing modded world failed to finish startup with the Coil Update; the cause remains unresolved in this package. Vehicle paint colors are currently unavailable during the native `Curved/Standard` shader test. The [previous beta.16 release](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.1.0-beta.16) remains available. Restore a matching backup when comparing releases rather than loading and saving a world without the mod.
+## Installation
 
-`src/Eco.Minecarts` is the server mod source. `client` contains the Unity model/bundle authoring code and assets. `models` contains the Blender source, FBX exports, textures, and collision meshes. The main source snapshot may be ahead of the latest packaged release; use the release ZIP when installing the mod. Existing `EcoMinecarts` package filenames are retained for compatibility.
+1. Back up your world and current mod files outside `Mods`.
+2. Stop the Eco server or close the hosted game.
+3. Install the matching pair and the `Vehicles` folder together in `Eco_Data/Server/Mods/UserCode` (or your dedicated server's `Mods/UserCode`). Remove the previous `Eco.Minecarts.dll` and `EcoMinecarts.unity3d` when upgrading from an older release. Keep only one copy of the mod under `Mods`.
+4. Restart the server. Use both files from the same release.
+
+Internal assembly, object, recipe and prefab identifiers remain compatible with existing saves. The latest schema check preserves all 929 saved definitions from 0.2.38.
+
+## Changes in 0.2.40
+
+- One editable C# balance file per vehicle, with automatic Eco startup compilation.
+- Safe inventory resizing preserves cargo when a configured slot reduction cannot fit it.
+
+Included from 0.2.39:
+
+- Smaller packet-time corner corrections for handcars and manually pulled minecarts; refresh corrected poses for observers.
+- Handcar maximum speed increased to 8 m/s (28.8 km/h).
+- Explicit native client physics ownership for guided vehicles and coupled followers, restoring native physics when released.
+- Mass-weighted consist gravity across slopes and transitions, with wheelbase-aware shared follower speed.
+
+Updates since 0.1.0 also include blueprint export/import and station improvements, drive connection controls, electrical drives, conditional routing, performance profiling support, vehicle access/text fixes, support climbing and power transmission, smoother coaster jump landings, speed-sensitive brake effects, and braking chains. See [release notes](RELEASE_NOTES.md).
+
+## Source and verification
+
+Each vehicle has its own editable `.cs` file in `Vehicles`. Change inventory-item weight, physical mass, cargo capacity, slot count and performance/maintenance constants, then save and restart Eco. Eco compiles these standalone files automatically; no full source download, SDK or build project is required. Keep the file/class/key names intact. Preserve customized files during upgrades. See the [vehicle customization guide](customization/README.md).
+
+`src/Eco.Minecarts` contains the current server source. `client` contains Unity authoring code and supporting assets; `models` contains model source assets. Building Unity visuals also requires the matching Eco ModKit and Unity environment. Installation uses the distribution ZIP.
+
+**Testing status:** build, private native-server regressions, exported-bundle ownership callbacks and vehicle model checks passed. Native Eco startup checks compile all 14 editable files and verify changed weights, capacities and slots; cargo-preserving slot resizing is also checked. Live multiplayer driving, heavy-rear-car downhill behavior and Linux operation remain unverified in this prerelease. Keep a matching rollback backup.
+
+The optional Shift+F11 profiler is a separate Windows client add-on; keep it out of server UserCode. This release's distribution does not include that add-on.
 
 Original project material is licensed under [JDL-1](LICENSE). Third-party and supplied-material notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This is an unofficial Eco mod.

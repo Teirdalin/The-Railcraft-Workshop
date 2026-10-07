@@ -10,6 +10,7 @@ public static class HandleConstraint
     // Keep the player upright and leave gravity/steps to their character controller.
     public static Vector3 Anchor(Vector3 cart, Quaternion rotation, int side, float playerY)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Anchor");
         var forward = Vector3.Transform(Vector3.UnitZ, rotation);
         forward.Y = 0;
         if (forward.LengthSquared() < .0001f) forward = Vector3.UnitZ;
@@ -20,6 +21,7 @@ public static class HandleConstraint
 
     public static bool ClearSweep(Vector3 from, Vector3 to, Func<Vector3, bool> clear)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/ClearSweep");
         var distance = Vector3.Distance(from, to);
         if (!float.IsFinite(distance) || distance > 3.5f) return false;
         var steps = Math.Max(1, (int)Math.Ceiling(distance / .05f));

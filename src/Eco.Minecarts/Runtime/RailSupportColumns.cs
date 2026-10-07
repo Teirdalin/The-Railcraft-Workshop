@@ -10,18 +10,21 @@ public sealed class RailSupportColumns:IModInit
 {
     private static int subscribed;
     public static void PostInitialize()
-    {if(Interlocked.Exchange(ref subscribed,1)==0)Eco.World.World.OnBlockChanged.Add(Changed);}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/PostInitialize");if(Interlocked.Exchange(ref subscribed,1)==0)Eco.World.World.OnBlockChanged.Add(Changed);}
     public static bool TrySupport(Type type,out string tier,out string part)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/TrySupport");
         var name=type.Name;tier="";part="";
         if(!name.StartsWith("RailSupport")||!name.EndsWith("Block")||name.Contains("Stacked"))return false;
         foreach(var candidate in new[]{"Wood","Iron","Steel"})if(name.StartsWith("RailSupport"+candidate))
         {tier=candidate;part=name[(11+candidate.Length)..^5];return part.StartsWith("Base")||part.StartsWith("Middle")||part.StartsWith("Top");}
         return false;
     }
-    public static int Reach(string tier)=>tier switch{"Wood"=>6,"Iron"=>12,"Steel"=>18,_=>0};
+    public static int Reach(string tier){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Reach"); return tier switch{"Wood"=>6,"Iron"=>12,"Steel"=>18,_=>0}; }
     public static int GroundedReach(Vector3i top,Func<Vector3i,Type?> read)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/GroundedReach");
         if(read(top) is not {} type||!TrySupport(type,out var tier,out var part)||!part.StartsWith("Top"))return 0;
         for(var y=top.Y-1;y>=0;y--)
         {
@@ -37,9 +40,11 @@ public sealed class RailSupportColumns:IModInit
         return 0;
     }
     private static void Changed(WrappedWorldPosition3i p)
-    {Adjust(new(p.X,p.Y,p.Z));if(p.Y>0)Adjust(new(p.X,p.Y-1,p.Z));}
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Changed");Adjust(new(p.X,p.Y,p.Z));if(p.Y>0)Adjust(new(p.X,p.Y-1,p.Z));}
     private static void Adjust(Vector3i cell)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Adjust");
         var type=Eco.World.World.GetBlock(cell)?.GetType();
         if(type==null||!TrySupport(type,out var tier,out var part)||!part.StartsWith("Top"))return;
         var suffix=part.Contains("R270")?"R270":part.Contains("R180")?"R180":part.Contains("R90")?"R90":"";

@@ -8,7 +8,7 @@ using Eco.Shared.Serialization;
 using Eco.Shared.SharedTypes;
 using Eco.World.Blocks;
 using Eco.World.Water;
-[NextRamp(typeof(CoasterTrackChainGradeDownSection01FormType), -1)]
+[NextRamp(typeof(CoasterTrackGradeDownSection01FormType), -1)]
 public sealed class CoasterTrackChainGradeCompactCrestSection01FormType:FormType { public override string Name=>"CoasterTrackChainGradeCompactCrestSection01"; public override LocString DisplayName=>Localizer.DoStr(CoasterTrackNames.Name("CoasterTrackChainGradeCompactCrestSection01")); public override LocString DisplayDescription=>Localizer.DoStr(CoasterTrackNames.Description("CoasterTrackChainGradeCompactCrestSection01")); public override Type GroupType=>typeof(CoasterTrackChainGroup); public override int MinTier=>1; public override int SortOrder=>18; }
 [RotatedVariants(typeof(CoasterTrackChainGradeCompactCrestSection01R270Block),typeof(CoasterTrackChainGradeCompactCrestSection01Block),typeof(CoasterTrackChainGradeCompactCrestSection01R90Block),typeof(CoasterTrackChainGradeCompactCrestSection01R180Block)),IsForm(typeof(CoasterTrackChainGradeCompactCrestSection01FormType),typeof(CoasterTrackItem))]
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]

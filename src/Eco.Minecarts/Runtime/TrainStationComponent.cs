@@ -27,19 +27,47 @@ public sealed class StationDepartureData
     [Serialized] public RequiredTrue Comparison { get; set; } = RequiredTrue.Any;
     [Serialized] public string SelectedCarIds { get; set; } = "";
     [Serialized] public GameValue<bool>? Expression { get; set; }
-    public StationDepartureData Copy() => new()
+    [Serialized,ThreadSafe] public List<StationDestinationRule>? Destinations {get;set;}
+    public StationDepartureData Copy() { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Copy"); return new()
     {
         Rules = Rules?.Where(r => r != null && Enum.IsDefined(r.Kind)).Take(64)
             .Select(r => new StationDepartureCondition(r.Kind,r.Threshold)).ToList(),
         Comparison = Enum.IsDefined(Comparison) ? Comparison : RequiredTrue.Any,
-        SelectedCarIds = SelectedCarIds ?? "", Expression=StationNativeConditions.Copy(Expression)
-    };
+        SelectedCarIds = SelectedCarIds ?? "", Expression=StationNativeConditions.Copy(Expression),Destinations=Destinations?.Select(r=>r.Copy()).ToList()
+    }; }
 }
 
 [Serialized, NoIcon, AutogenClass, LocDisplayName("Station Departure")]
-public sealed class TrainStationComponent : WorldObjectComponent, IPersistentData, IProvidesContext
+public sealed partial class TrainStationComponent : WorldObjectComponent, IPersistentData, IProvidesContext
 {
     private static readonly ConcurrentDictionary<int, TrainStationComponent> Stations = new();
+    private static readonly ConcurrentDictionary<Guid,TrainStationComponent> StationObjects=new();
+    private static readonly ConcurrentDictionary<RailCell, TrainStationComponent[]> TrackStations = new();
+    private static readonly object TrackStationGate = new();
+    private static long routingRevision;
+    internal static long RoutingRevision => Volatile.Read(ref routingRevision);
+    internal static void RoutingChanged() => Interlocked.Increment(ref routingRevision);
+    private string? indexedName;
+    private void BindTrack(RailCell? cell, float parameter)
+    {
+        lock(TrackStationGate)
+        {
+            if(Cell!=cell)
+            {
+                if(Cell is {} old && TrackStations.TryGetValue(old,out var entries))
+                {
+                    var kept=entries.Where(s=>s!=this).ToArray();
+                    if(kept.Length==0)TrackStations.TryRemove(old,out _); else TrackStations[old]=kept;
+                }
+                if(cell is {} next)
+                    TrackStations[next]=TrackStations.GetValueOrDefault(next,[]).Where(s=>s!=this)
+                        .Append(this).OrderBy(s=>s.Parent.ID).ToArray();
+            }
+            var changed=Cell!=cell || TrackT!=parameter;
+            Cell=cell; TrackT=parameter;
+            if(changed)RoutingChanged();
+        }
+    }
     private sealed class SettingsClipboard { public StationDepartureData? Data; }
     private static readonly ConditionalWeakTable<object, SettingsClipboard> Clipboards = new();
     [Serialized] public bool WaitForTime { get; set; }
@@ -55,7 +83,8 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
     [SyncToView, Autogen, PropReadOnly] public string CargoCars => string.IsNullOrWhiteSpace(SelectedCarIds)
         ? "All cargo cars" : SelectedCarIds.Split(',',StringSplitOptions.RemoveEmptyEntries).Any(id=>!Guid.TryParse(id,out _))
         ? "Reselect cargo cars after update" : $"{SelectedCarIds.Split(',',StringSplitOptions.RemoveEmptyEntries).Length} selected cars";
-    [RPC, Autogen] public void SelectCargoCars(Player player) { _ = SelectCargoCarsAsync(player); }
+    [RPC, Autogen] public void SelectCargoCars(Player player) {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SelectCargoCars", this.Parent); _ = SelectCargoCarsAsync(player); }
     private async Task SelectCargoCarsAsync(Player player)
     {
         if(!CanConfigure(player)) return;
@@ -100,7 +129,8 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
     [Serialized, ThreadSafe] private List<StationDepartureCondition>? rules;
     [Serialized] private GameValue<bool>? expression;
     private int settingsRevision;
-    [SyncToView] public IEnumerable<IContextValue> ContextProvided=>GameValueManager.GetContexts(typeof(StationDepartureContext)) ?? Enumerable.Empty<IContextValue>();
+    [SyncToView] public IEnumerable<IContextValue> ContextProvided=>(GameValueManager.GetContexts(typeof(StationDepartureContext)) ?? Enumerable.Empty<IContextValue>())
+        .Concat(GameValueManager.GetContexts(typeof(StationPassengerContext)) ?? Enumerable.Empty<IContextValue>());
     private List<StationDepartureCondition> Rules
     {
         get
@@ -118,15 +148,16 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
     }
     public object PersistentData
     {
-        get { lock(settingsGate) return new StationDepartureData { Rules = this.Rules.Select(r => new StationDepartureCondition(r.Kind,r.Threshold)).ToList(), Comparison = this.Comparison, SelectedCarIds = this.SelectedCarIds, Expression=StationNativeConditions.Copy(this.expression) }; }
+        get { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Persistence/Component snapshots/TrainStationComponent.PersistentData.get", this.Parent); lock(settingsGate) return new StationDepartureData { Rules = this.Rules.Select(r => new StationDepartureCondition(r.Kind,r.Threshold)).ToList(), Comparison = this.Comparison, SelectedCarIds = this.SelectedCarIds, Expression=StationNativeConditions.Copy(this.expression),Destinations=DestinationRules.Select(r=>r.Copy()).ToList() }; }
         set
-        {
+        { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Persistence/Component snapshots/TrainStationComponent.PersistentData.set", this.Parent);
             if(value is not StationDepartureData data) return;
             lock(settingsGate)
             {
                 this.rules = data.Rules?.Where(r => r != null && Enum.IsDefined(r.Kind)).Take(64).Select(r => new StationDepartureCondition(r.Kind,r.Threshold)).ToList();
                 this.Comparison = Enum.IsDefined(data.Comparison) ? data.Comparison : RequiredTrue.Any;
                 this.SelectedCarIds = data.SelectedCarIds ?? "";
+                destinationRules=data.Destinations?.Where(r=>r!=null&&StationNativeConditions.Valid(r.Conditions)).Take(32).Select(r=>r.Copy()).ToList()??new();
                 this.expression = StationNativeConditions.Valid(data.Expression) ? StationNativeConditions.Copy(data.Expression) : null;
                 if(data.Expression!=null)
                 {
@@ -138,11 +169,13 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
             }
         }
     }
-    private bool CanConfigure(Player player) => player != null && Parent != null && !Parent.IsDestroyed && Parent.IsAuthorized(player.User, AccessType.FullAccess)
-        && Vector3.Distance(player.User.Position, Parent.Position) <= 6;
-    private void SettingsChanged() { settingsRevision++; this.Changed(nameof(Conditions)); this.Changed(nameof(Comparison)); this.Changed(nameof(CargoCars)); Parent.SetDirty(); }
+    private bool CanConfigure(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/CanConfigure", this.Parent); return player != null && Parent != null && !Parent.IsDestroyed && Parent.IsAuthorized(player.User, AccessType.FullAccess)
+        && Vector3.Distance(player.User.Position, Parent.Position) <= 6; }
+    private void SettingsChanged() {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SettingsChanged", this.Parent); settingsRevision++; this.Changed(nameof(Conditions)); this.Changed(nameof(Comparison)); this.Changed(nameof(CargoCars)); this.Changed(nameof(ConditionalDestinations)); Parent.SetDirty(); }
     [RPC, Autogen] public void CopySettings(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/CopySettings", this.Parent);
         if (!CanConfigure(player)) return;
         var snapshot = (StationDepartureData)this.PersistentData;
         var clipboard = Clipboards.GetValue(player.User, _ => new SettingsClipboard());
@@ -151,6 +184,7 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
     }
     [RPC, Autogen] public void PasteSettings(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/PasteSettings", this.Parent);
         if (!CanConfigure(player)) return;
         var clipboard = Clipboards.GetValue(player.User, _ => new SettingsClipboard());
         StationDepartureData? snapshot;
@@ -161,17 +195,23 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
         SettingsAction = "Departure settings pasted"; this.Changed(nameof(SettingsAction));
     }
     [RPC] public void SetDraftCondition(Player player, StationConditionKind value)
-    { if(!CanConfigure(player) || !Enum.IsDefined(value)) return; lock(settingsGate) { DraftCondition=value; this.Changed(nameof(DraftCondition)); } }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SetDraftCondition", this.Parent); if(!CanConfigure(player) || !Enum.IsDefined(value)) return; lock(settingsGate) { DraftCondition=value; this.Changed(nameof(DraftCondition)); } }
     [RPC] public void SetDraftThreshold(Player player, float value)
-    { if(!CanConfigure(player) || !float.IsFinite(value)) return; lock(settingsGate) { DraftThreshold=Math.Clamp(value,0,86400); this.Changed(nameof(DraftThreshold)); } }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SetDraftThreshold", this.Parent); if(!CanConfigure(player) || !float.IsFinite(value)) return; lock(settingsGate) { DraftThreshold=Math.Clamp(value,0,86400); this.Changed(nameof(DraftThreshold)); } }
     [RPC] public void SetDraftRuleNumber(Player player, int value)
-    { if(!CanConfigure(player)) return; lock(settingsGate) { DraftRuleNumber=Math.Clamp(value,1,64); this.Changed(nameof(DraftRuleNumber)); } }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SetDraftRuleNumber", this.Parent); if(!CanConfigure(player)) return; lock(settingsGate) { DraftRuleNumber=Math.Clamp(value,1,64); this.Changed(nameof(DraftRuleNumber)); } }
     [RPC] public void AddCondition(Player player)
-    { EditDepartureConditions(player); }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/AddCondition", this.Parent); EditDepartureConditions(player); }
     [RPC] public void EditCondition(Player player)
-    { EditDepartureConditions(player); }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/EditCondition", this.Parent); EditDepartureConditions(player); }
     [RPC, Autogen] public void EditDepartureConditions(Player player)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/EditDepartureConditions", this.Parent);
         if(!CanConfigure(player)) return;
         GameValue<bool> draft; int revision;
         lock(settingsGate) { draft=StationNativeConditions.Copy(expression)??StationNativeConditions.FromRules(Rules,Comparison); revision=settingsRevision; }
@@ -179,10 +219,11 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
     }
     private void OpenNativeEditor(Player player,GameValue<bool>? draft,int revision,Action<GameValue<bool>?> commit)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/OpenNativeEditor", this.Parent);
         ViewEditorUtils.PopupUserEditValue(player.User,typeof(GameValue<bool>),Localizer.DoStr("Train station departure conditions"),draft,this,value=>
         {
             if(!CanConfigure(player)) return;
-            var condition=value as GameValue<bool>;
+            var condition=StationPassengerConditions.Normalize(value as GameValue<bool>);
             lock(settingsGate)
             {
                 if(revision!=settingsRevision) { SettingsAction="Settings changed while the editor was open; reopen it"; this.Changed(nameof(SettingsAction)); return; }
@@ -192,36 +233,51 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
         });
     }
     [RPC] public void RemoveCondition(Player player)
-    { if(!CanConfigure(player)) return; lock(settingsGate) { if(expression is SetOfConditions root) { var next=(SetOfConditions)StationNativeConditions.Copy(root)!; if(DraftRuleNumber<1||DraftRuleNumber>next.List.Count) return; next.List.RemoveAt(DraftRuleNumber-1); expression=next; rules=new(); } else if(expression!=null) { expression=null; rules=new(); } else { if(DraftRuleNumber < 1 || DraftRuleNumber > Rules.Count) return; var next=Rules.ToList(); next.RemoveAt(DraftRuleNumber-1); rules=next; } SettingsChanged(); } }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/RemoveCondition", this.Parent); if(!CanConfigure(player)) return; lock(settingsGate) { if(expression is SetOfConditions root) { var next=(SetOfConditions)StationNativeConditions.Copy(root)!; if(DraftRuleNumber<1||DraftRuleNumber>next.List.Count) return; next.List.RemoveAt(DraftRuleNumber-1); expression=next; rules=new(); } else if(expression!=null) { expression=null; rules=new(); } else { if(DraftRuleNumber < 1 || DraftRuleNumber > Rules.Count) return; var next=Rules.ToList(); next.RemoveAt(DraftRuleNumber-1); rules=next; } SettingsChanged(); } }
     [RPC] public void SetComparison(Player player, RequiredTrue value)
-    { if(!CanConfigure(player) || !Enum.IsDefined(value)) return; lock(settingsGate) { _ = Rules; Comparison=value; if(expression is SetOfConditions set) { var next=(SetOfConditions)StationNativeConditions.Copy(set)!; next.Comparison=value; expression=next; } SettingsChanged(); } }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SetComparison", this.Parent); if(!CanConfigure(player) || !Enum.IsDefined(value)) return; lock(settingsGate) { _ = Rules; Comparison=value; if(expression is SetOfConditions set) { var next=(SetOfConditions)StationNativeConditions.Copy(set)!; next.Comparison=value; expression=next; } SettingsChanged(); } }
     [RPC] public void SetSelectedCarIds(Player player, string value)
-    { if(!CanConfigure(player) || value == null || value.Length > 4096) return; lock(settingsGate) { SelectedCarIds=value; SettingsChanged(); } }
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SetSelectedCarIds", this.Parent); if(!CanConfigure(player) || value == null || value.Length > 4096) return; lock(settingsGate) { SelectedCarIds=value; SettingsChanged(); } }
     internal RailCell? Cell { get; private set; }
     internal float TrackT { get; private set; }
-    public override void PostInitialize() { base.PostInitialize(); _ = this.Rules; Stations[this.Parent.ID] = this; this.Tick(); }
-    public override void Destroy() { Stations.TryRemove(this.Parent.ID, out _); base.Destroy(); }
+    public override void PostInitialize() {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/PostInitialize", this.Parent); base.PostInitialize(); _ = this.Rules; Stations[this.Parent.ID] = this; StationObjects[Parent.ObjectID]=this; this.Tick(); }
+    public override void Destroy() {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Destroy", this.Parent); BindTrack(null,0); Stations.TryRemove(this.Parent.ID, out _); StationObjects.TryRemove(Parent.ObjectID,out _); RoutingChanged(); base.Destroy(); }
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Tick", this.Parent);
         base.Tick();
         if(Parent.GetComponent<CoasterRailComponent>() is {} ownRail)
         {
-            Cell=ownRail.Rail.Cell;TrackT=.5f;
+            BindTrack(ownRail.Rail.Cell,.5f);
         }
         else if (this.Cell is not { } bound || TrackWorld.Read(bound) == null)
         {
             var rail = new[] { TrackWorld.Nearest(this.Parent.Position, 2.5f), TrackWorld.Nearest(this.Parent.Position, 2.5f, true), TrackWorld.Nearest(this.Parent.Position,2.5f,coaster:true) }
                 .Where(x => x.HasValue).OrderBy(x => System.Numerics.Vector3.DistanceSquared(this.Parent.Position, x!.Value.Rail.Point(x.Value.T))).FirstOrDefault();
-            this.Cell = rail?.Rail.Cell; this.TrackT = rail?.T ?? 0;
+            BindTrack(rail?.Rail.Cell,rail?.T ?? 0);
         }
+        var name=Parent.DisplayName.ToString();
+        if(indexedName!=name) {indexedName=name;RoutingChanged();}
         this.Connection = this.Cell != null ? "Connected to rail" : "No adjacent rail";
         this.Changed(nameof(Connection));
     }
-    internal static TrainStationComponent? Find(int id) => Stations.TryGetValue(id, out var station) && !station.Parent.IsDestroyed ? station : null;
-    internal static IEnumerable<TrainStationComponent> At(RailCell cell) => Stations.Values.Where(x => !x.Parent.IsDestroyed && x.Cell == cell).OrderBy(x => x.Parent.ID);
+    internal static TrainStationComponent? Find(int id) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Find"); return Stations.TryGetValue(id, out var station) && !station.Parent.IsDestroyed ? station : null; }
+    internal static TrainStationComponent[] At(RailCell cell) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/At"); return TrackStations.GetValueOrDefault(cell,[]); }
     internal bool HasDepartureConditions {get {lock(settingsGate) return expression!=null || Rules.Count>0;}}
     internal bool Ready(RailCouplingComponent train, double elapsed)
     {
+        var context=DepartureContext(train,elapsed);
+        lock(settingsGate) return expression!=null ? StationNativeConditions.Ready(expression,context)
+            : StationDepartureCondition.Ready(Rules,Comparison,elapsed,context.CargoPercent,context.Full,context.Empty,context.CargoKnown);
+    }
+    internal StationDepartureContext DepartureContext(RailCouplingComponent train,double elapsed)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Ready", this.Parent);
         var consist=train.Group();
         var ids = (this.SelectedCarIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var selected = consist.Where(x => ids.Length > 0 ? ids.Any(id=>Guid.TryParse(id,out var guid)&&guid==x.Parent.ObjectID)
@@ -238,26 +294,31 @@ public sealed class TrainStationComponent : WorldObjectComponent, IPersistentDat
         var empty = valid && selected.Length > 0 && selected.All(x => x.Parent.GetComponent<PublicStorageComponent>().Inventory.IsEmpty);
         var passengerSeats=0;
         var occupiedSeats=0;
+        var passengers=new List<User>();
         foreach(var car in consist)
         {
             var mounts=car.Parent.GetComponent<MountComponent>();
             var seats=Math.Min(car.Vehicle.RailSpec.PassengerSeats,Math.Max(0,mounts.Seats-1));
             passengerSeats+=seats;
             occupiedSeats+=mounts.OccupantIDs.Skip(1).Take(seats).Count(id=>id>=0);
+            var passengerIds=mounts.OccupantIDs.Skip(1).Take(seats).ToHashSet();
+            passengers.AddRange(mounts.MountedPlayers.Where(p=>passengerIds.Contains(p.ID)).Select(p=>p.User));
         }
         var minimumCondition=consist.Length>0 && consist.All(x=>x.Parent.GetComponent<RailConditionComponent>()!=null)
             ? consist.Min(x=>x.Parent.GetComponent<RailConditionComponent>().ConditionPercent) : double.NaN;
-        var engines=consist.Where(x=>x.Vehicle.RailSpec.Powered).ToArray();
+        var engines=consist.Where(x=>x.Vehicle.RailSpec.Powered&&!x.Vehicle.RailSpec.Tram).ToArray();
         var fuelMinutes=engines.Length>0 && engines.All(x=>x.Parent.GetComponent<FuelSupplyComponent>()!=null)
             ? engines.Min(x=>
             {
                 var fuel=x.Parent.GetComponent<FuelSupplyComponent>();
                 return (fuel.Energy+fuel.EnergyInSupply)/Math.Max(1,RailEconomy.FuelWatts(x.Vehicle.RailSpec)*60);
             }) : double.NaN;
-        lock(settingsGate) return expression!=null
-            ? StationNativeConditions.Ready(expression,new StationDepartureContext { Elapsed=elapsed,CargoPercent=valid&&selected.Length>0?this.CargoPercent:double.NaN,CargoKnown=valid&&selected.Length>0,Full=full,Empty=empty,
-                CarCount=consist.Length,PassengerSeats=passengerSeats,OccupiedPassengerSeats=occupiedSeats,MinimumConditionPercent=minimumCondition,FuelMinutes=fuelMinutes })
-            : StationDepartureCondition.Ready(this.Rules, this.Comparison, elapsed, valid && selected.Length > 0 ? this.CargoPercent : double.NaN, full, empty, valid && selected.Length > 0);
+        var fuelEngines=engines.Where(x=>!x.Vehicle.RailSpec.Tram).Select(x=>x.Parent.GetComponent<FuelSupplyComponent>()).ToArray();
+        var fuelKnown=fuelEngines.Length>0 && fuelEngines.All(f=>f?.Inventory!=null);
+        var fuelFill=fuelKnown ? fuelEngines.Min(f=>f.Inventory.IsEmpty ? 0 : Math.Clamp((double)f.Inventory.FillPerCent*100,0,100)) : double.NaN;
+        var fuelAmount=fuelKnown ? fuelEngines.Min(f=>(f.Energy+f.EnergyInSupply)/1000000d) : double.NaN;
+        return new StationDepartureContext { Elapsed=elapsed,CargoPercent=valid&&selected.Length>0?this.CargoPercent:double.NaN,CargoKnown=valid&&selected.Length>0,Full=full,Empty=empty,
+            CarCount=consist.Length,PassengerSeats=passengerSeats,OccupiedPassengerSeats=occupiedSeats,MinimumConditionPercent=minimumCondition,FuelMinutes=fuelMinutes,
+            FuelPercent=fuelFill,FuelMegajoules=fuelAmount,Passengers=passengers.DistinctBy(p=>p.Id).ToArray() };
     }
 }
-

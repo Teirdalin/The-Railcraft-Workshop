@@ -49,11 +49,11 @@ public sealed record PlacedRailPiece(
         }
     }
 
-    private static RailEndpoint Endpoint(int x, int y, int z, float dx, float dz) =>
-        new(new GridPoint(x, y, z), Vector2.Normalize(new Vector2(dx, dz)));
+    private static RailEndpoint Endpoint(int x, int y, int z, float dx, float dz) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Endpoint"); return new(new GridPoint(x, y, z), Vector2.Normalize(new Vector2(dx, dz))); }
 
     private RailEndpoint Transform(RailEndpoint endpoint)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Transform");
         var turns = ((this.QuarterTurns % 4) + 4) % 4;
         var point = endpoint.Position;
         var direction = endpoint.OutwardPlanarDirection;
@@ -97,6 +97,7 @@ public sealed class TrackGraph
 
     public static TrackGraph Build(IEnumerable<PlacedRailPiece> source)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Build");
         var pieces = source.ToDictionary(piece => piece.Id, StringComparer.Ordinal);
         var sockets = pieces.Values
             .SelectMany(piece => piece.Endpoints.Select((endpoint, index) => (piece.Id, Index: index, Endpoint: endpoint)))
@@ -130,6 +131,7 @@ public sealed class TrackGraph
 
     public bool TryGetNeighbor(string pieceId, int endpointIndex, out (string PieceId, int EndpointIndex) neighbor)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/TryGetNeighbor");
         if (!this.connections.TryGetValue((pieceId, endpointIndex), out var connection))
         {
             neighbor = default;

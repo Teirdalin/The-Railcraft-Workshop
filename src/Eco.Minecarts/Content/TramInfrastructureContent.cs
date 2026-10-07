@@ -16,51 +16,60 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-[Serialized, LocDisplayName("Tram Cable Drive"), LocDescription("Connect to a mechanically powered grid beside Tram Rail. The connected rail network conducts traction power to automated trams. Available power determines supported tram load and speed."), Weight(12000)]
+[Serialized, LocDisplayName("Tram Cable Drive"), LocDescription("Connect to a mechanically powered grid beside Tram Rail. The connected rail network conducts traction power to automated trams. Available power determines supported tram load and speed. Crafted at the Railworks Workbench using Industry."), Weight(12000)]
 public sealed class TramCableDriveItem : WorldObjectItem<TramCableDriveObject> { }
 
-[RequiresSkill(typeof(BasicEngineeringSkill),3)]
+[RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class TramCableDriveRecipe : MinecartRailRecipeFamily
 {
-    public TramCableDriveRecipe()=>Configure(MinecartRailRecipes.Make<TramCableDriveItem>("Tram Cable Drive",12,12,woodenGears:2),"Tram Cable Drive",typeof(TramCableDriveRecipe),180,6);
+    public TramCableDriveRecipe()=>Configure(MinecartRailRecipes.Make<TramCableDriveItem>("Tram Cable Drive",12,12,woodenGears:2, skillType:typeof(IndustrySkill)),"Tram Cable Drive",typeof(TramCableDriveRecipe),180,6, skillType:typeof(IndustrySkill));
 }
 
 [Serialized, RequireComponent(typeof(OnOffComponent)), RequireComponent(typeof(PropertyAuthComponent))]
 [RequireComponent(typeof(PowerGridComponent)), RequireComponent(typeof(PowerConsumptionComponent))]
-public sealed class TramCableDriveObject : WorldObject, IRepresentsItem
+[RequireComponent(typeof(RailPowerConnectionComponent))]
+public class TramCableDriveObject : WorldObject, IRepresentsItem
 {
+    public virtual bool Electrical => false;
     private static readonly ConcurrentDictionary<int,TramCableDriveObject> Drives=new();
+    private static readonly object DriveOrderGate=new();
+    private static TramCableDriveObject[] orderedDrives=[];
+    private static void RefreshDriveOrder()
+    { lock(DriveOrderGate) Volatile.Write(ref orderedDrives,Drives.Values.OrderBy(d=>d.ID).ToArray()); }
     private readonly object gate=new();
     private HashSet<RailCell> cells=[];
     private readonly Dictionary<int,DateTime> trams=[];
-    private DateTime nextScan;
     private float lastDemand=-1;
     private float supportedFraction;
     private bool running;
-    private bool OwnsRun=>!Drives.Values.Any(d=>d.ID<ID && !d.IsDestroyed && d.Enabled && d.cells.Overlaps(cells));
+    private bool OwnsRun=>!Volatile.Read(ref orderedDrives).Any(d=>d.ID<ID && !d.IsDestroyed && d.Enabled
+        && d.GetComponent<RailPowerConnectionComponent>().Connected && d.cells.Overlaps(cells));
     private static bool ReadyExceptPower(PowerGridComponent grid)=>!grid.Parent.IsDestroyed &&
         grid.Parent.Components.All(c=>c==grid || c.Enabled && (c is not IOperatingWorldObjectComponent op || op.Operating));
-    private float RequiredWatts=>OwnsRun && cells.Count>0 && ReadyExceptPower(GetComponent<PowerGridComponent>())
+    private float RequiredWatts=>GetComponent<RailPowerConnectionComponent>().Connected && OwnsRun && cells.Count>0 && ReadyExceptPower(GetComponent<PowerGridComponent>())
         ? RailEconomy.TramCableWatts(cells.Count,trams.Count) : 0;
     static TramCableDriveObject()=>AddOccupancyList(typeof(TramCableDriveObject),new BlockOccupancy(Vector3i.Zero,typeof(BuildingWorldObjectBlock)));
-    public Type RepresentedItemType=>typeof(TramCableDriveItem);
+    public virtual Type RepresentedItemType=>typeof(TramCableDriveItem);
     public override LocString DisplayName=>Localizer.DoStr("Tram Cable Drive");
     [SyncToView,Autogen,PropReadOnly,LocDisplayName("Connected Tram Rails")] public int ConnectedRails {get;private set;}
     [SyncToView,Autogen,PropReadOnly,LocDisplayName("Connected Trams")] public int ConnectedTrams {get;private set;}
-    [SyncToView,Autogen,PropReadOnly,LocDisplayName("Required Mechanical Power (W)")] public float RequiredPower {get;private set;}
-    [SyncToView,Autogen,PropReadOnly,LocDisplayName("Allocated Mechanical Power (W)")] public float AvailablePower {get;private set;}
+    [SyncToView,Autogen,PropReadOnly,LocDisplayName("Required Power (W)")] public float RequiredPower {get;private set;}
+    [SyncToView,Autogen,PropReadOnly,LocDisplayName("Allocated Power (W)")] public float AvailablePower {get;private set;}
     [SyncToView,Autogen,PropReadOnly] public string Status {get;private set;}="Waiting for Tram Rail";
     protected override void Initialize()
     {
         base.Initialize();
         GetComponent<PowerConsumptionComponent>().Initialize(0);
-        GetComponent<PowerGridComponent>().Initialize(5,new MechanicalPower());
+        if(Electrical) GetComponent<PowerGridComponent>().Initialize(10,new ElectricPower());
+        else GetComponent<PowerGridComponent>().Initialize(5,new MechanicalPower());
         Drives[ID]=this;
+        RefreshDriveOrder();
     }
     protected override void OnDestroy()
     {
         var occupied=WorldOccupancy?.ToArray();var id=ObjectID;
         Drives.TryRemove(ID,out _);
+        RefreshDriveOrder();
         base.OnDestroy();
         if(occupied!=null) foreach(var cell in occupied)
             if(Eco.World.World.GetBlock(cell) is WorldObjectBlock block && block.WorldObjectHandle.Id==id)
@@ -68,11 +77,12 @@ public sealed class TramCableDriveObject : WorldObject, IRepresentsItem
     }
     public override void Tick()
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/Tick");
         base.Tick();
         lock(gate)
         {
             var now=DateTime.UtcNow;
-            if(now>=nextScan) { cells=TrackWorld.TramRun(Position);nextScan=now.AddSeconds(1); }
+            cells=GetComponent<RailPowerConnectionComponent>().Cells;
             foreach(var stale in trams.Where(x=>(now-x.Value).TotalSeconds>2).Select(x=>x.Key).ToArray()) trams.Remove(stale);
             var grid=GetComponent<PowerGridComponent>().PowerGrid;
             RequiredPower=RequiredWatts;
@@ -89,7 +99,7 @@ public sealed class TramCableDriveObject : WorldObject, IRepresentsItem
             if(Math.Abs(demand-lastDemand)>.01f)
             { GetComponent<PowerConsumptionComponent>().OverridePowerConsumption(demand);lastDemand=demand; }
             running=OwnsRun && Enabled && cells.Count>0 && grid!=null && GetComponent<PowerGridComponent>().Enabled && supportedFraction>0.05f;
-            Status=!Enabled?"Off":cells.Count==0?"No connected Tram Rail":grid==null?"No mechanical grid":
+            Status=!Enabled?"Off":cells.Count==0?"No connected Tram Rail":grid==null?(Electrical?"No electrical grid":"No mechanical grid"):
                 !running?"Insufficient power":supportedFraction<.99f?"Reduced cable speed":"Powering tram network";
             this.Changed(nameof(ConnectedRails));this.Changed(nameof(ConnectedTrams));this.Changed(nameof(RequiredPower));this.Changed(nameof(AvailablePower));this.Changed(nameof(Status));
             SetAnimatedState("CableRunning",running);
@@ -97,12 +107,13 @@ public sealed class TramCableDriveObject : WorldObject, IRepresentsItem
     }
     internal static float PowerFor(RailCell cell,int tramId)
     {
-        foreach(var drive in Drives.Values.OrderBy(d=>d.ID))
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Vehicle propulsion lookup/PowerFor");
+        foreach(var drive in Volatile.Read(ref orderedDrives))
         {
-            if(drive.IsDestroyed) {Drives.TryRemove(drive.ID,out _);continue;}
+            if(drive.IsDestroyed) continue;
             lock(drive.gate)
             {
-                if(!drive.cells.Contains(cell)||!drive.running) continue;
+                if(!drive.GetComponent<RailPowerConnectionComponent>().Connected || !drive.cells.Contains(cell)||!drive.running) continue;
                 drive.trams[tramId]=DateTime.UtcNow;
                 return drive.supportedFraction;
             }

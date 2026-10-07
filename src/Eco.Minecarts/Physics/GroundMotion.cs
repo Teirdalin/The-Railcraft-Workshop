@@ -8,6 +8,7 @@ public static class GroundMotion
     public const float MaximumSpeed = 1.5f;
     public static Vector3 DesiredVelocity(Vector3 movement, double elapsed, Vector3 gripError)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/DesiredVelocity");
         if (elapsed <= 0 || !HandcartControl.IsContinuousMovement(movement, elapsed)) return Vector3.Zero;
         var desired = movement / (float)elapsed + gripError * 2;
         desired.Y = 0;
@@ -17,6 +18,7 @@ public static class GroundMotion
     public static Vector3 Step(Vector3 position, ref Vector3 velocity, Vector3 desired, double mass,
         double dt, bool brake, Func<Vector3, Vector3?> resolveGround)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/Step");
         if (brake || dt <= 0) { velocity = Vector3.Zero; return position; }
         mass = Math.Max(280, mass);
         var force = (desired - velocity) * 650;

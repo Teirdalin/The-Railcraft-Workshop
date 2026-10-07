@@ -21,6 +21,7 @@ public sealed partial class CoasterStationComponent
     // bend could put adjacent car bodies through each other before coupling.
     internal bool TryLoadingPosition(out LoadingPosition? placement,out string error)
     {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/TryLoadingPosition");
         placement=null;error="Clear the loading track and extend straight, level coaster rail behind the station.";
         if(Parent.IsDestroyed)return false;
         var rail=Parent.GetComponent<CoasterRailComponent>().Rail;
@@ -81,8 +82,8 @@ public sealed partial class CoasterStationComponent
         }
         placement=new(rail,t,facing,position,rotation,tail);error="";return true;
     }
-    private static bool LevelStraight(VoxelRail rail,Vector3 forward)=>rail.Profile.Coaster&&
-        Enumerable.Range(0,5).All(i=>Math.Abs(Vector3.Dot(rail.Profile.Tangent(i/4f),forward))>.999f&&rail.Profile.Up(i/4f).Y>.999f);
+    private static bool LevelStraight(VoxelRail rail,Vector3 forward){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/LevelStraight"); return rail.Profile.Coaster&&
+        Enumerable.Range(0,5).All(i=>Math.Abs(Vector3.Dot(rail.Profile.Tangent(i/4f),forward))>.999f&&rail.Profile.Up(i/4f).Y>.999f); }
 
     internal async Task PlaceCart(Player player,RollerCoasterCartItem item)
     {

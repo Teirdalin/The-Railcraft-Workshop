@@ -69,6 +69,8 @@ namespace EcoMinecarts.Editor
             }.Concat(RailExpansionAssetBuilder.Build(cartPrefab, trainPrefab, materials)).Concat(new[]{RailcraftWorkbenchAssetBuilder.Build()}).ToArray();
 
             var blockSets = new[] { TrackBlockAssetBuilder.Build(), TrackBlockAssetBuilder.Build(true), TrackBlockAssetBuilder.Build(wooden: true), TrackBlockAssetBuilder.Build(tram:true),CoasterTerrainAssetBuilder.Build(materials),RailSupportAssetBuilder.Build() };
+            // Finish the hand cart after cloning its chassis for locomotives.
+            RailPullingAssetBuilder.RefreshBase();
             RailVisualFinish.Apply(worldPrefabs,materials);
             RailVehiclePaintBuilder.Apply(worldPrefabs);
             MinecartIconBuilder.Build(worldPrefabs);
@@ -88,6 +90,7 @@ namespace EcoMinecarts.Editor
         public static void BuildSavedClientBundle()
         {
             RemoveRetiredCoasterEntries();
+            ElectricalDriveAssetBuilder.Apply();
             ExportCurrentLibrary();
         }
         // Material-only refreshes preserve the already-reviewed library scene.
@@ -108,6 +111,10 @@ namespace EcoMinecarts.Editor
         }
         private static void ExportCurrentLibrary()
         {
+            CoasterBlueprintAssetBuilder.BuildAssetsAndRegister();
+            RailVehicleTextBuilder.Apply();
+            RailVehiclePlacementBuilder.Apply();
+            RailSupportAssetBuilder.RefreshClimbing();
             RailWorldMaterialBuilder.NormalizeMaterials();
             RailBlockDistanceAppearance.Apply();
             AssetDatabase.SaveAssets();
@@ -678,7 +685,7 @@ namespace EcoMinecarts.Editor
             var prefabs=Paths("Prefabs").Where(p=>!Path.GetFileNameWithoutExtension(p).StartsWith("Coaster")&&Path.GetFileNameWithoutExtension(p)!="RailcraftWorkbenchObject")
                 .Select(LoadPrefab).Concat(coasterPrefabs).Concat(new[]{RailcraftWorkbenchAssetBuilder.Build()}).ToArray();
             Debug.Log("RAIL_RETIRE_PREFABS_OK");
-            var sets=Paths("blockSets").Select(p=>AssetDatabase.LoadAssetAtPath<BlockSet>(p)).Where(s=>s!=null&&s.name!="RailSupports"&&s.name!="CoasterTrack").Concat(new[]{RailSupportAssetBuilder.Build(),CoasterTerrainAssetBuilder.Build(materials)}).ToArray();
+            var sets=Paths("blockSets").Select(p=>AssetDatabase.LoadAssetAtPath<BlockSet>(p)).Where(s=>s!=null&&s.name!="RailSupports"&&s.name!="CoasterTrack"&&s.name!="MinecartChain").Concat(new[]{RailSupportAssetBuilder.Build(),CoasterTerrainAssetBuilder.Build(materials),TrackBlockAssetBuilder.Build(chain:true)}).ToArray();
             Debug.Log("RAIL_RETIRE_BLOCKSETS_OK");
             if(prefabs.Any(p=>p==null)||sets.Any(s=>s==null))throw new InvalidOperationException("Missing source library asset");
             CreateBundleScene(prefabs,sets);
@@ -691,7 +698,7 @@ namespace EcoMinecarts.Editor
             var objects = new GameObject("Objects");
             objects.AddComponent<ModkitPrefabContainer>().Prefabs = worldPrefabs
                 .Where(p => !p.name.StartsWith("RailChain") || !p.name.EndsWith("Indicator"))
-                .Concat(ChainRailIndicatorAssetBuilder.Build()).ToArray();
+                .ToArray(); // Recovery release: omit unverified transient arrow entities.
 
             var items = new GameObject("Items", typeof(RectTransform), typeof(Canvas));
             var itemTemplate = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/EcoModKit/Prefabs/DefaultItem.prefab");

@@ -77,7 +77,7 @@ namespace EcoMinecarts.Editor
                 }
                 if(path.Key=="CoasterStation")
                 {
-                    Box(root.transform,"Loading platform",new Vector3(0,-.30f,0),new Vector3(.9f,.10f,1),materials["MAT_WoodRail"],Quaternion.identity,true);
+                    Box(root.transform,"Loading platform",new Vector3(0,-.375f,0),new Vector3(.9f,.25f,1),materials["MAT_WoodRail"],Quaternion.identity,true);
                     foreach(var end in new[]{-1,1})
                         Box(root.transform,"Station rail junction box",new Vector3(-1,-.52f,end*.3f),new Vector3(.5f,.18f,.25f),paint,Quaternion.identity);
                     Box(root.transform,"Station control cabinet",new Vector3(.2f,.15f,0),new Vector3(.4f,.8f,.3f),paint,Quaternion.identity,true);

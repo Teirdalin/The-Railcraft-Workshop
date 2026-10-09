@@ -1,0 +1,33 @@
+{
+  "version": "0.2.67",
+  "originalVehicleModels": true,
+  "dllSha256": "5E2A01C03384D9F7D0B94731F48357C85E649E89411C08B18F7335C2C3C64C2D",
+  "name": "Railworks Workshop",
+  "cameraInstalledOnJoin": false,
+  "bundleSha256": "7765A472A37E4E5F727AD914E619F8013C71D9321F8C3B6CF407287D061C6E68",
+  "newVehicleModelsDeferred": true,
+  "editableVehicleFiles": 14,
+  "nativeVerified": true,
+  "prerelease": true,
+  "liveMultiplayerVerified": false,
+  "assets": [
+    {
+      "sha256": "DEB60EBE251F8A0CEC4D874C709CDE677B68C5858DB54EF53E7904AE5A7D915A",
+      "files": 16,
+      "bytes": 44601183,
+      "name": "Railworks-Workshop-Server-0-2-67.zip"
+    },
+    {
+      "sha256": "D0FBC23235CB76B09414FF94F36699AEFDD13D24832B3678A447F48D2B3DD1BE",
+      "files": 2,
+      "bytes": 7498,
+      "name": "Railworks-Workshop-BepInEx-Camera-0-2-67.zip"
+    }
+  ],
+  "cameraRequiresLocalBepInEx": true,
+  "ecoVersion": "0.14.1.1 beta release-1079",
+  "serverContainsReadmes": false,
+  "exportedAnimationsVerified": true,
+  "preservedDefinitionsSincePreviousGitHubRelease": 929,
+  "additiveDefinitionsSincePreviousGitHubRelease": 33
+}

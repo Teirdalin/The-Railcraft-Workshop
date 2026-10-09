@@ -91,6 +91,9 @@ public sealed class MinecartRecipe : RecipeFamily
 [Ecopedia("Crafted Objects", "Vehicles", subPageName: "Minecart Item")]
 public sealed class MinecartObject : Eco.Minecarts.Runtime.RailVehicleObject, IRepresentsItem
 {
+    public static Eco.Minecarts.Physics.RailVehicleSpec DefaultSpecification {get;} = new("Minecart", "Minecart", 280, 2500, 12, 1.612f, .82f, .5f, 18, 0, 0, 4800, 0, Pullable: true);
+    public override Eco.Minecarts.Runtime.RailVehicleCapabilities Capabilities => Eco.Minecarts.Runtime.RailVehicleCapabilities.ManualHandle;
+
     static MinecartObject() => WorldObject.AddOccupancy<MinecartObject>(new List<BlockOccupancy>());
 
     private MinecartObject() { }

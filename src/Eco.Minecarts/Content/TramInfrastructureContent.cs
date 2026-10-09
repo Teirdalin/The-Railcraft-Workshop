@@ -10,6 +10,7 @@ using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Skills;
 using Eco.Minecarts.Runtime;
+using static Eco.Minecarts.Runtime.PoweredRailDrive;
 using Eco.Minecarts.Physics;
 using Eco.Minecarts.Track;
 using Eco.Shared.Localization;
@@ -31,21 +32,15 @@ public sealed class TramCableDriveRecipe : MinecartRailRecipeFamily
 public class TramCableDriveObject : WorldObject, IRepresentsItem
 {
     public virtual bool Electrical => false;
-    private static readonly ConcurrentDictionary<int,TramCableDriveObject> Drives=new();
-    private static readonly object DriveOrderGate=new();
-    private static TramCableDriveObject[] orderedDrives=[];
-    private static void RefreshDriveOrder()
-    { lock(DriveOrderGate) Volatile.Write(ref orderedDrives,Drives.Values.OrderBy(d=>d.ID).ToArray()); }
+    private static readonly PoweredRailRegistry<TramCableDriveObject> Drives=new();
     private readonly object gate=new();
     private HashSet<RailCell> cells=[];
-    private readonly Dictionary<int,DateTime> trams=[];
+    private readonly PoweredRailContacts trams=new(2);
     private float lastDemand=-1;
     private float supportedFraction;
     private bool running;
-    private bool OwnsRun=>!Volatile.Read(ref orderedDrives).Any(d=>d.ID<ID && !d.IsDestroyed && d.Enabled
+    private bool OwnsRun=>!Drives.Snapshot.Any(d=>d.ID<ID && !d.IsDestroyed && d.Enabled
         && d.GetComponent<RailPowerConnectionComponent>().Connected && d.cells.Overlaps(cells));
-    private static bool ReadyExceptPower(PowerGridComponent grid)=>!grid.Parent.IsDestroyed &&
-        grid.Parent.Components.All(c=>c==grid || c.Enabled && (c is not IOperatingWorldObjectComponent op || op.Operating));
     private float RequiredWatts=>GetComponent<RailPowerConnectionComponent>().Connected && OwnsRun && cells.Count>0 && ReadyExceptPower(GetComponent<PowerGridComponent>())
         ? RailEconomy.TramCableWatts(cells.Count,trams.Count) : 0;
     static TramCableDriveObject()=>AddOccupancyList(typeof(TramCableDriveObject),new BlockOccupancy(Vector3i.Zero,typeof(BuildingWorldObjectBlock)));
@@ -59,22 +54,11 @@ public class TramCableDriveObject : WorldObject, IRepresentsItem
     protected override void Initialize()
     {
         base.Initialize();
-        GetComponent<PowerConsumptionComponent>().Initialize(0);
-        if(Electrical) GetComponent<PowerGridComponent>().Initialize(10,new ElectricPower());
-        else GetComponent<PowerGridComponent>().Initialize(5,new MechanicalPower());
-        Drives[ID]=this;
-        RefreshDriveOrder();
+        PoweredRailDrive.Initialize(this,Electrical);
+        Drives.Register(this);
     }
     protected override void OnDestroy()
-    {
-        var occupied=WorldOccupancy?.ToArray();var id=ObjectID;
-        Drives.TryRemove(ID,out _);
-        RefreshDriveOrder();
-        base.OnDestroy();
-        if(occupied!=null) foreach(var cell in occupied)
-            if(Eco.World.World.GetBlock(cell) is WorldObjectBlock block && block.WorldObjectHandle.Id==id)
-                Eco.World.World.DeleteBlock(cell);
-    }
+    { var footprint=WorldOccupancy?.ToArray();var id=ObjectID;Drives.Remove(this);base.OnDestroy();PoweredRailDrive.RemoveFootprint(footprint,id); }
     public override void Tick()
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/Tick");
@@ -82,8 +66,9 @@ public class TramCableDriveObject : WorldObject, IRepresentsItem
         lock(gate)
         {
             var now=DateTime.UtcNow;
+            var oldRails=ConnectedRails;var oldTrams=ConnectedTrams;var oldRequired=RequiredPower;var oldAvailable=AvailablePower;var oldStatus=Status;
             cells=GetComponent<RailPowerConnectionComponent>().Cells;
-            foreach(var stale in trams.Where(x=>(now-x.Value).TotalSeconds>2).Select(x=>x.Key).ToArray()) trams.Remove(stale);
+            trams.Expire(now);
             var grid=GetComponent<PowerGridComponent>().PowerGrid;
             RequiredPower=RequiredWatts;
             ConnectedRails=cells.Count;ConnectedTrams=trams.Count;
@@ -101,20 +86,24 @@ public class TramCableDriveObject : WorldObject, IRepresentsItem
             running=OwnsRun && Enabled && cells.Count>0 && grid!=null && GetComponent<PowerGridComponent>().Enabled && supportedFraction>0.05f;
             Status=!Enabled?"Off":cells.Count==0?"No connected Tram Rail":grid==null?(Electrical?"No electrical grid":"No mechanical grid"):
                 !running?"Insufficient power":supportedFraction<.99f?"Reduced cable speed":"Powering tram network";
-            this.Changed(nameof(ConnectedRails));this.Changed(nameof(ConnectedTrams));this.Changed(nameof(RequiredPower));this.Changed(nameof(AvailablePower));this.Changed(nameof(Status));
+            if(oldRails!=ConnectedRails)this.Changed(nameof(ConnectedRails));
+            if(oldTrams!=ConnectedTrams)this.Changed(nameof(ConnectedTrams));
+            if(oldRequired!=RequiredPower)this.Changed(nameof(RequiredPower));
+            if(oldAvailable!=AvailablePower)this.Changed(nameof(AvailablePower));
+            if(oldStatus!=Status)this.Changed(nameof(Status));
             SetAnimatedState("CableRunning",running);
         }
     }
     internal static float PowerFor(RailCell cell,int tramId)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Vehicle propulsion lookup/PowerFor");
-        foreach(var drive in Volatile.Read(ref orderedDrives))
+        foreach(var drive in Drives.Snapshot)
         {
             if(drive.IsDestroyed) continue;
             lock(drive.gate)
             {
                 if(!drive.GetComponent<RailPowerConnectionComponent>().Connected || !drive.cells.Contains(cell)||!drive.running) continue;
-                drive.trams[tramId]=DateTime.UtcNow;
+                drive.trams.Touch(tramId,DateTime.UtcNow);
                 return drive.supportedFraction;
             }
         }

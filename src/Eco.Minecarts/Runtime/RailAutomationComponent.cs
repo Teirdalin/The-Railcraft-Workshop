@@ -94,7 +94,7 @@ public sealed class RailAutomationComponent : WorldObjectComponent, IPersistentD
         return destination.Rail.Profile.Shape!=null
             && RailNetworkSearch.Connected(start,destination.Rail.Cell,TrackWorld.NetworkNeighbors);
     }
-    [RPC,Autogen] public void NextChainDrive(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void NextChainDrive(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/NextChainDrive", this.Parent);
         if(!CanEdit(player)) return;
@@ -107,23 +107,23 @@ public sealed class RailAutomationComponent : WorldObjectComponent, IPersistentD
             Publish($"Selected {target.DisplayName} at {target.Position3i}");
         }
     }
-    [RPC,Autogen] public void NextEvent(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void NextEvent(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/NextEvent", this.Parent);
         if(!CanEdit(player)) return;
         lock(gate) { draftEvent=(RailEvent)(((int)draftEvent+1)%4); Publish("Entry, exit, arrival or dispatch selected."); }
     }
-    [RPC,Autogen] public void NextAction(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void NextAction(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/NextAction", this.Parent);
         if(!CanEdit(player)) return;
         lock(gate) { draftCommand=(RailCommand)(((int)draftCommand+1)%3); Publish("Command selected."); }
     }
-    [RPC,Autogen] public void IncreaseDelay(Player player) {
+    [RPC, Autogen, UITypeName("BigButton")] public void IncreaseDelay(Player player) {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/IncreaseDelay", this.Parent); if(CanEdit(player)) lock(gate) { draftDelay=Math.Min(86400,draftDelay+5); Publish("Delay increased by five seconds."); } }
-    [RPC,Autogen] public void DecreaseDelay(Player player) {
+    [RPC, Autogen, UITypeName("BigButton")] public void DecreaseDelay(Player player) {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/DecreaseDelay", this.Parent); if(CanEdit(player)) lock(gate) { draftDelay=Math.Max(0,draftDelay-5); Publish("Delay decreased by five seconds."); } }
-    [RPC,Autogen] public void AddRule(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void AddRule(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/AddRule", this.Parent);
         if(!CanEdit(player)) return;
@@ -136,7 +136,7 @@ public sealed class RailAutomationComponent : WorldObjectComponent, IPersistentD
             Parent.SetDirty(); Publish("Rule saved.");
         }
     }
-    [RPC,Autogen] public void RemoveLastRule(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void RemoveLastRule(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Automation and remote controls/RemoveLastRule", this.Parent);
         if(!CanEdit(player)) return;

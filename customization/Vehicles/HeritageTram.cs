@@ -5,10 +5,14 @@ namespace RailworksWorkshop.VehicleSettings
 {
     public static class HeritageTramSettings
     {
+        // Original artwork ships in this release; newer vehicle models are deferred.
+        public const bool NewDesign = false;
         public const string VehicleKey = "HeritageTram";
         public const int CarriedItemWeightGrams = 15000;
         public const double EmptyMassKg = 1250;
         public const double CargoCapacityKg = 100;
+        // Automatically unload cargo when crossing a Dumping Rail.
+        public const bool AllowDumping = false;
         public const int StorageSlots = 4;
         public const double MaximumSpeedMetresPerSecond = 20;
         public const double PowerWatts = 9000;

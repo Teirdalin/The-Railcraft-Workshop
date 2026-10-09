@@ -78,13 +78,6 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
     private void OnDismounted() {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/OnDismounted", this.Parent); this.boarding = false; this.approvedPlayer = null; this.approvedSeat = 0; }
 
-    public override void Tick()
-    {
-        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Tick", this.Parent);
-        // Motion owns rail physics; off-rail gravity belongs to the native
-        // client. A passenger must not repeatedly revoke its physics controller.
-    }
-
     public override void Destroy()
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Destroy", this.Parent);

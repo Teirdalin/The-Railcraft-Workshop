@@ -7,6 +7,10 @@ namespace Eco.Minecarts.Runtime;
 internal static class TrackWorld
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type,VoxelTrackProfile?> BlockProfiles = new();
+    internal static void RegisterBlockProfile(Type block,VoxelTrackProfile profile)
+    {BlockProfiles[block]=profile;RailSimulationFrame.Invalidate();}
+    private readonly record struct RailRead(long Revision,VoxelRail? Rail);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<RailCell,RailRead> SharedReads=new();
     // Network membership includes every physical switch branch, independently
     // of its current route. Actual vehicle traversal still follows switch state.
     internal static IEnumerable<RailCell> NetworkNeighbors(RailCell cell)
@@ -26,9 +30,20 @@ internal static class TrackWorld
         : new[]{rail};
     public static VoxelRail? Read(RailCell cell)
     {
+        RailPowerConnectionObserver.EnsureWorldEvents();
         var cache = RailSimulationFrame.Reads;
         if (cache != null && cache.TryGetValue(cell, out var cached)) return cached;
-        var result = ReadUncached(cell);
+        var revision=RailSimulationFrame.Revision;
+        VoxelRail? result;
+        if(SharedReads.TryGetValue(cell,out var shared)&&shared.Revision==revision)result=shared.Rail;
+        else
+        {
+            result=ReadUncached(cell);
+            // Bound both positive and negative queries. Existing block/object/
+            // switch change events advance Revision and invalidate all readers.
+            if(SharedReads.Count>=8192)SharedReads.Clear();
+            SharedReads[cell]=new(revision,result);
+        }
         if (cache != null && cache.Count < 4096) cache[cell] = result;
         return result;
     }
@@ -36,6 +51,7 @@ internal static class TrackWorld
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Track lookup and connectivity/Read");
         if(CoasterRailComponent.Read(cell) is {} coaster) return coaster;
+        if(MinecartDumpRailComponent.Read(cell) is {} dump) return dump;
         if(RailSwitchComponent.Read(cell) is {} points) return points;
 #if INDUSTRIAL_TRACKS
         if (IndustrialRailComponent.Read(cell) is { } industrial) return industrial;
@@ -121,6 +137,27 @@ internal static class TrackWorld
             if (score >= best) continue;
             best = score;
             result = (rail, nearest.T);
+        }
+        return result;
+    }
+
+    internal static (VoxelRail Rail,float T)? CaptureContact(Vector3 position,System.Numerics.Quaternion rotation,Vector3 velocity,float halfWheelbase,float halfWidth,float maxPenetration=.45f)
+    {
+        (VoxelRail Rail,float T)? result=null;var best=float.MaxValue;
+        foreach(var rail in Near(position,true))
+        {
+            var nearest=rail.Profile.Nearest(position-rail.Cell.Origin);
+            var up=rail.Profile.Up(nearest.T);var offset=position-rail.Point(nearest.T);
+            var normal=Vector3.Dot(offset,up);
+            if((offset-up*normal).LengthSquared()>.24f*.24f || Vector3.Dot(velocity,up)>.05f)continue;
+            var forward=rail.Profile.Tangent(nearest.T);
+            if(Vector3.Dot(Vector3.Transform(Vector3.UnitZ,rotation),forward)<0)forward=-forward;
+            var x=Vector3.Normalize(Vector3.Cross(up,forward));var y=Vector3.Cross(forward,x);
+            var guided=System.Numerics.Quaternion.CreateFromRotationMatrix(new Matrix4x4(x.X,x.Y,x.Z,0,y.X,y.Y,y.Z,0,forward.X,forward.Y,forward.Z,0,0,0,0,1));
+            var contact=normal-Eco.Minecarts.Physics.AirMotion.LandingClearance(rotation,guided,up,halfWheelbase,halfWidth);
+            if(contact>.05f || contact< -maxPenetration)continue;
+            var error=Math.Abs(contact)+(offset-up*normal).Length();
+            if(error<best){best=error;result=(rail,nearest.T);}
         }
         return result;
     }
@@ -230,13 +267,15 @@ internal static class TrackWorld
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/One-time network discovery/ChainRun");
         var powered = new HashSet<RailCell>();
         var visited = new HashSet<RailCell>();
-        var seed = Near(drivePosition).Where(r => r.Profile.Chain)
+        static bool Conducts(VoxelRail rail) => rail.Profile.Chain ||
+            (rail.Profile.Coaster && CoasterStationComponent.At(rail.Cell) != null);
+        // Connecting beside the station must work even when the nearest chain
+        // lies beyond its other socket. Seed discovery from conductive hardware.
+        var seed = Near(drivePosition).Where(Conducts)
             .OrderBy(r => r.Profile.Nearest(drivePosition - r.Cell.Origin).Distance).FirstOrDefault();
         if (seed.Profile.Shape == null || seed.Profile.Nearest(drivePosition - seed.Cell.Origin).Distance > 1.6f) return powered;
         // A coaster station joins its two rail sockets into one conductive run,
         // but it has no lift chain and must not consume power or pull a cart.
-        static bool Conducts(VoxelRail rail) => rail.Profile.Chain ||
-            (rail.Profile.Coaster && CoasterStationComponent.At(rail.Cell) != null);
         var pending = new Queue<VoxelRail>();
         pending.Enqueue(seed);
         while (pending.TryDequeue(out var rail))

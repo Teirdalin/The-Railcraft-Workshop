@@ -16,6 +16,8 @@ public sealed record RailVehicleBalance
     public double? BrakingNewtons { get; init; }
     public double? IntendedTrainMassKg { get; init; }
     public double? DurabilityHours { get; init; }
+    public bool? AllowDumping {get;init;}
+    public bool? NewDesign {get;init;}
 }
 
 public static class RailVehicleBalances
@@ -52,7 +54,7 @@ public static class RailVehicleBalances
                     CargoCapacityKg=Read<double>("CargoCapacityKg"),StorageSlots=Read<int>("StorageSlots"),
                     MaximumSpeedMetresPerSecond=Read<double>("MaximumSpeedMetresPerSecond"),PowerWatts=Read<double>("PowerWatts"),
                     TractionNewtons=Read<double>("TractionNewtons"),BrakingNewtons=Read<double>("BrakingNewtons"),
-                    IntendedTrainMassKg=Read<double>("IntendedTrainMassKg"),DurabilityHours=Read<double>("DurabilityHours")
+                    IntendedTrainMassKg=Read<double>("IntendedTrainMassKg"),DurabilityHours=Read<double>("DurabilityHours"),AllowDumping=Read<bool>("AllowDumping"),NewDesign=Read<bool>("NewDesign")
                 };
                 if(!found.TryAdd(key,balance))throw new InvalidOperationException("Duplicate Railworks settings for "+key+". Keep one .cs file for each vehicle.");
             }
@@ -68,6 +70,24 @@ public static class RailVehicleBalances
             // Native ShrinkTo relocates occupied slots and refuses a reduction
             // when cargo would be lost. Retry naturally at the next initialization.
             if(inventory.Stacks.Count()>spec.Slots)inventory.ShrinkTo(spec.Slots);
+        }
+    }
+    public static bool AllowsDumping(string key)
+    {
+        lock(Gate)
+        {
+            if(dirty){resolved=null;settings=null;dirty=false;}
+            settings??=Discover();
+            return settings.GetValueOrDefault(key)?.AllowDumping??key is "Minecart" or "WoodenMinecart";
+        }
+    }
+    public static bool UsesNewDesign(string key)
+    {
+        lock(Gate)
+        {
+            if(dirty){resolved=null;settings=null;dirty=false;}
+            settings??=Discover();
+            return settings.GetValueOrDefault(key)?.NewDesign??false;
         }
     }
     internal static void ApplyItemWeight(string key)

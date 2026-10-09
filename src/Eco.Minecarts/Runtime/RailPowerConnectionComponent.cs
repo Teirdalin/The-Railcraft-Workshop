@@ -84,7 +84,7 @@ public sealed class RailPowerConnectionComponent : WorldObjectComponent
     internal HashSet<RailCell> Cells { get { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/RailPowerConnectionComponent.Cells.get", this.Parent); lock(gate) return restored && link.Connected ? link.Powered : Empty; } }
     private static readonly HashSet<RailCell> Empty = [];
 
-    [RPC, Autogen] public void Connect(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void Connect(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/Connect", this.Parent);
         if(player == null || Parent.IsDestroyed || !Parent.IsAuthorized(player.User,AccessType.FullAccess)
@@ -240,5 +240,7 @@ public sealed class RailPowerConnectionObserver : IModInit
     private static int subscribed;
     public static void PostInitialize()
     {
-        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/PostInitialize"); RailSimulationFrame.Invalidate(); if(Interlocked.Exchange(ref subscribed,1)==0) Eco.World.World.OnBlockChanged.Add(RailPowerConnectionComponent.BlockChanged); }
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/PostInitialize"); RailSimulationFrame.Invalidate(); EnsureWorldEvents(); }
+    internal static void EnsureWorldEvents()
+    { if(Volatile.Read(ref subscribed)==0&&Interlocked.Exchange(ref subscribed,1)==0)Eco.World.World.OnBlockChanged.Add(RailPowerConnectionComponent.BlockChanged); }
 }

@@ -38,6 +38,7 @@ namespace EcoMinecarts.Editor
                 }
                 if (!loading.isDone) return;
                 Verify();
+                RailWheelAnimationProbe.Verify(SceneManager.GetActiveScene().GetRootGameObjects().Single(n=>n.name=="Objects").GetComponent<ModkitPrefabContainer>().Prefabs);
                 RailVehiclePaintProbe.Verify(SceneManager.GetActiveScene().GetRootGameObjects().Single(n=>n.name=="Objects").GetComponent<ModkitPrefabContainer>().Prefabs);
                 SessionState.SetBool(Pending, false);
                 EditorApplication.Exit(0);

@@ -24,7 +24,7 @@ namespace EcoMinecarts.Editor
         public static bool IsBuilding(string name)
         {
             if(ObjectIcons.Contains(name)) return false;
-            if(name=="Rail" || name=="BrokenWoodenTrack" || name.StartsWith("MinecartTrack")
+            if(name=="MinecartDumpRail" || name=="Rail" || name=="BrokenWoodenTrack" || name.StartsWith("MinecartTrack")
                 || name.StartsWith("MinecartChain") || name.StartsWith("WoodenTrack")
                 || name.StartsWith("IndustrialTrack") || name.StartsWith("IndustrialChain") || name.StartsWith("RailSwitch")
                 || name.StartsWith("IndustrialRailSwitch") || name.StartsWith("WideRail")
@@ -90,7 +90,7 @@ namespace EcoMinecarts.Editor
         [Serializable] private class IconReport { public IconEntry[] icons; }
         public static Bounds BoundsOf(GameObject target)
         {
-            var renderers = target.GetComponentsInChildren<MeshRenderer>(true).Where(r => r.enabled).ToArray();
+            var renderers = target.GetComponentsInChildren<MeshRenderer>(true).Where(r => r.enabled&&r.gameObject.activeInHierarchy).ToArray();
             if (renderers.Length == 0) throw new InvalidOperationException(target.name + " has no enabled mesh renderers.");
             var bounds = renderers[0].bounds;
             foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
@@ -124,6 +124,14 @@ namespace EcoMinecarts.Editor
             var preview = new GameObject("IconPreview");
             var instance = Object.Instantiate(prefab, preview.transform);
             instance.SetActive(true);
+            foreach(var animator in instance.GetComponentsInChildren<Animator>(true))animator.enabled=false;
+            // Evaluate only the detailed model for a still thumbnail. Unity's
+            // LOD selection otherwise waits for a frame and all levels can
+            // overlap during the immediate Camera.Render call.
+            foreach(var group in instance.GetComponentsInChildren<LODGroup>(true)){
+                group.ForceLOD(0);var levels=group.GetLODs();
+                for(int i=0;i<levels.Length;i++)foreach(var renderer in levels[i].renderers)renderer.enabled=i==0;
+            }
             foreach (var child in instance.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = 31;
             var bounds = BoundsOf(instance);
             var camera = new GameObject("IconCamera").AddComponent<Camera>();
@@ -167,7 +175,7 @@ namespace EcoMinecarts.Editor
                 RenderTexture.active = target;
                 texture.ReadPixels(new Rect(0,0,256,256),0,0);
                 texture.Apply();
-                if (texture.GetPixels32().Count(p => p.a > 128) < 500) throw new InvalidOperationException("Empty icon: " + name);
+                if (texture.GetPixels32().Count(p => p.a > 128) < 500) throw new InvalidOperationException("Empty icon: " + name+"; bounds="+bounds+"; active renderers="+instance.GetComponentsInChildren<MeshRenderer>().Count(r=>r.enabled));
                 ApplyBackdrop(texture,name);
                 var path = Root + "/Icons/" + name + ".png";
                 File.WriteAllBytes(path, texture.EncodeToPNG());

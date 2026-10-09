@@ -68,13 +68,13 @@ public sealed class TramRouteComponent : WorldObjectComponent
     }
     internal void SuspendService() {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Tram routing/SuspendService", this.Parent); if(!serviceActive)return;serviceActive=false;Publish(); }
-    [RPC,Autogen] public void StartService(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void StartService(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Tram routing/StartService", this.Parent);
         if(!CanConfigure(player)) return;
         serviceActive=true;Parent.GetComponent<TrainControllerComponent>().ApplyTargetCommand((float)(Parent.GetComponent<RailCouplingComponent>().Performance.SpeedLimit*3.6));Publish();
     }
-    [RPC,Autogen] public void StopService(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void StopService(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Tram routing/StopService", this.Parent);
         if(!CanConfigure(player)) return;
@@ -82,7 +82,7 @@ public sealed class TramRouteComponent : WorldObjectComponent
         Parent.GetComponent<TrainControllerComponent>().StopAutomaticMotion();
         Publish();
     }
-    [RPC,Autogen] public void SetLineName(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void SetLineName(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Tram routing/SetLineName", this.Parent); if(CanConfigure(player)) _=EditLineName(player); }
     private async Task EditLineName(Player player)
@@ -91,7 +91,7 @@ public sealed class TramRouteComponent : WorldObjectComponent
         if(!CanConfigure(player)||string.IsNullOrWhiteSpace(name)||name.Length>60) return;
         lineName=name.Trim();Publish();
     }
-    [RPC,Autogen] public void SetRoute(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void SetRoute(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Tram routing/SetRoute", this.Parent); if(CanConfigure(player)) _=EditRoute(player); }
     private async Task EditRoute(Player player)

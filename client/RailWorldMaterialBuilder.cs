@@ -105,7 +105,9 @@ namespace EcoMinecarts.Editor
                 if (material.name == "MAT_TrainExhaust" || material.name == "MAT_BrakeSparks" || material.name == "MAT_DriveStalledSmoke")
                 { Particle(material, material.name == "MAT_BrakeSparks"); continue; }
                 if (!NativeSurfaceTest && material.shader.name == RailVehiclePaintBuilder.ShaderName) continue;
+                bool packed=material.HasProperty("_UsePackedSurface")&&material.GetFloat("_UsePackedSurface")>.5f;
                 material.shader = standard;
+                if(packed){material.EnableKeyword("_METALLICGLOSSMAP");material.SetFloat("_GlossMapScale",1);}
                 material.DisableKeyword("NO_CURVE"); material.DisableKeyword("MINIMAP_NO_CURVE");
                 material.enableInstancing = true;
                 EditorUtility.SetDirty(material);

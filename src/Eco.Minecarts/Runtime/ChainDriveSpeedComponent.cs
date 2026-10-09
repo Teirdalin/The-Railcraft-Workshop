@@ -43,9 +43,9 @@ public sealed class ChainDriveSpeedComponent : WorldObjectComponent, IPersistent
     // Autogen treats non-void methods as value editors. A Task-returning
     // action becomes an unusable selector on the stock Eco client.
     // Keep the old RPC for compatibility, but expose only void buttons.
-    [RPC, Autogen] public void IncreaseSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/IncreaseSpeed", this.Parent); SetSpeedMultiplier(player,Math.Min(MaximumSpeed,SpeedMultiplier+.25f)); }
-    [RPC, Autogen] public void DecreaseSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/DecreaseSpeed", this.Parent); SetSpeedMultiplier(player,Math.Max(.25f,SpeedMultiplier-.25f)); }
-    [RPC, Autogen] public void ResetSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/ResetSpeed", this.Parent); SetSpeedMultiplier(player,1); }
+    [RPC, Autogen, UITypeName("BigButton")] public void IncreaseSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/IncreaseSpeed", this.Parent); SetSpeedMultiplier(player,Math.Min(MaximumSpeed,SpeedMultiplier+.25f)); }
+    [RPC, Autogen, UITypeName("BigButton")] public void DecreaseSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/DecreaseSpeed", this.Parent); SetSpeedMultiplier(player,Math.Max(.25f,SpeedMultiplier-.25f)); }
+    [RPC, Autogen, UITypeName("BigButton")] public void ResetSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/ResetSpeed", this.Parent); SetSpeedMultiplier(player,1); }
     [RPC] public async Task AdjustSpeed(Player player)
     {
         if(!CanAdjust(player)) return;

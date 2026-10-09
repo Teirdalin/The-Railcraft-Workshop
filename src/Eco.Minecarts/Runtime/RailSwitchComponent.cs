@@ -108,9 +108,9 @@ public sealed class RailSwitchComponent : WorldObjectComponent,IPersistentData
             route=requested;Publish();Parent.SetDirty();Status="Station route set to "+SelectedRoute;this.Changed(nameof(Status));return true;
         }
     }
-    [RPC,Autogen] public void Left(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Left", this.Parent); Select(player,-1); }
-    [RPC,Autogen] public void Forward(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Forward", this.Parent); Select(player,0); }
-    [RPC,Autogen] public void Right(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Right", this.Parent); Select(player,1); }
+    [RPC, Autogen, UITypeName("BigButton")] public void Left(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Left", this.Parent); Select(player,-1); }
+    [RPC, Autogen, UITypeName("BigButton")] public void Forward(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Forward", this.Parent); Select(player,0); }
+    [RPC, Autogen, UITypeName("BigButton")] public void Right(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Right", this.Parent); Select(player,1); }
     [Interaction(InteractionTrigger.InteractKey,"Set switch route",requiredEnvVars:new[]{"RailSwitch"},interactionDistance:4,authRequired:AccessType.FullAccess)]
     public void Open(Player player,InteractionTriggerInfo trigger,InteractionTarget target) {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Switches/Open", this.Parent);if(!Parent.IsDestroyed&&Parent.IsAuthorized(player.User,AccessType.FullAccess)) Parent.OpenUI(player);}

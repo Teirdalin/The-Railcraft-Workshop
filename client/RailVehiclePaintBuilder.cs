@@ -23,7 +23,7 @@ namespace EcoMinecarts.Editor
             if(Has(name,"Roof","Canopy","Clerestory","Destination frame","Destination stile")) return 3;
             if(Has(name,"Frame","Chassis","Underframe","RunningGear","Running board","RunningBoard",
                 "Wheel","Spoke","Hub","Flange","Tyre","Tire","Axle","Bearing","Spring","Brake",
-                "Piston","Cylinder","Crosshead","Connecting rod","Rod crank","Valve linkage",
+                "Piston","Cylinder","Crosshead","Connecting rod","Rod crank","Valve linkage","DriveRod","ValveStem","Animated crank pin",
                 "Boiler band","BoilerBand","Boiler saddle","Rivet","Hinge","Bezel",
                 "Drawbar","Coupler","Coupling","Buffer","Footplate","Deck","Floor",
                 "Cab sill","Cab outrigger","Cab riser","Step","Tread","Handrail","Rail","Grip",
@@ -40,7 +40,7 @@ namespace EcoMinecarts.Editor
                 return group.name=="Roof"?3:group.name=="Frame"?2:1;
             return RegionName(renderer.name);
         }
-        static Material PaintMaterial(Material source,int channel)
+        internal static Material PaintMaterial(Material source,int channel)
         {
             var key=source.name+"_Paint"+channel;
             if(Cache.TryGetValue(key,out var cached)) return cached;
@@ -106,6 +106,10 @@ namespace EcoMinecarts.Editor
                         var materials=renderer.sharedMaterials;
                         for(var i=0;i<materials.Length;i++){
                             var source=materials[i];if(source==null) continue;
+                            // Prepared vehicle atlases already contain all three
+                            // native paint channels. Rewrapping them as one solid
+                            // region would paint over timber, seats and brass.
+                            if(source.shader.name==ShaderName&&source.HasProperty("_UsePackedSurface")&&source.GetFloat("_UsePackedSurface")>.5f){count++;continue;}
                             // Idempotent refreshes reclassify from original assets.
                             var suffix=source.name.LastIndexOf("_Paint",StringComparison.Ordinal);
                             if(suffix>=0) source=AssetDatabase.LoadAssetAtPath<Material>(Root+"/Materials/"+source.name.Substring(0,suffix)+".mat")??source;

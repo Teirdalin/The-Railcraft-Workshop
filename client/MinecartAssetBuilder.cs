@@ -95,6 +95,39 @@ namespace EcoMinecarts.Editor
         }
         // Material-only refreshes preserve the already-reviewed library scene.
         public static void BuildAuthoredClientBundle() => ExportCurrentLibrary();
+        public static void BuildOriginalVehiclesBundle()
+        {OriginalVehicleReleaseBuilder.Apply();BuildLibraryBundle();}
+        public static void BuildHandcarFitBundle()
+        {
+            RailVehicleDesignBuilder.RestoreModernAuthoringFits();MeshyVehicleLibraryBuilder.ApplyHandcarFit();
+            RailVehicleDesignBuilder.Apply();BuildLibraryBundle();
+        }
+        public static void BuildCoasterSeatFitBundle()
+        {
+            RailVehicleDesignBuilder.RestoreModernAuthoringFits();
+            var path=Root+"/Prefabs/MinecartObject.prefab";var cart=PrefabUtility.LoadPrefabContents(path);
+            try{
+                RailPullingAssetBuilder.Configure(cart,280,2500);RailVehiclePhysicsAssetBuilder.Configure(cart);
+                PrefabUtility.SaveAsPrefabAsset(cart,path);
+            }finally{PrefabUtility.UnloadPrefabContents(cart);}
+            MeshyVehicleLibraryBuilder.ApplyCoasterSeatFit();
+            MeshyInfrastructureAssetBuilder.RepairPresentation();RailVehicleDesignBuilder.Apply();BuildLibraryBundle();
+        }
+        public static void AddDumpRailAndBuild()
+        {
+            var materials=CreateMaterials();
+            var prefab=RailExpansionAssetBuilder.DumpRail(materials);
+            MinecartIconBuilder.Render(prefab,"MinecartDumpRail");
+            var scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
+            var container=scene.GetRootGameObjects().SelectMany(r=>r.GetComponentsInChildren<ModkitPrefabContainer>(true)).Single();
+            container.Prefabs=container.Prefabs.Where(p=>p!=null&&p.name!=prefab.name).Concat(new[]{prefab}).ToArray();
+            var items=scene.GetRootGameObjects().Single(r=>r.name=="Items").transform;
+            var old=items.Find("MinecartDumpRailItem");if(old!=null)UnityEngine.Object.DestroyImmediate(old.gameObject);
+            CreateItem(items,items.GetChild(0).gameObject,"MinecartDumpRailItem",AssetDatabase.LoadAssetAtPath<Sprite>(Root+"/Icons/MinecartDumpRail.png"));
+            EditorUtility.SetDirty(container);EditorSceneManager.SaveScene(scene);AssetDatabase.SaveAssets();
+            BuildSavedClientBundle();
+            Debug.Log("DUMP_RAIL_ASSETS_OK: dumping rail prefab/icon added; fourteen snap volumes anchored at rail-contact pivots.");
+        }
         public static void NormalizeIconScaleAndBuildBundle()
         {
             foreach(var guid in AssetDatabase.FindAssets("t:Texture2D",new[]{Root+"/Icons"})){
@@ -111,12 +144,40 @@ namespace EcoMinecarts.Editor
         }
         private static void ExportCurrentLibrary()
         {
+            RailVehicleDesignBuilder.RestoreModernAuthoringFits();
+            RailWheelAnimationBuilder.Apply();
+            MeshyVehicleLibraryBuilder.Apply();
             CoasterBlueprintAssetBuilder.BuildAssetsAndRegister();
             RailVehicleTextBuilder.Apply();
             RailVehiclePlacementBuilder.Apply();
             RailSupportAssetBuilder.RefreshClimbing();
+            MeshyInfrastructureAssetBuilder.Apply();
             RailWorldMaterialBuilder.NormalizeMaterials();
             RailBlockDistanceAppearance.Apply();
+            RailVehicleDesignBuilder.Apply();
+            BuildLibraryBundle();
+        }
+        public static void BuildDesignBundle()
+        {
+            MeshyInfrastructureAssetBuilder.RepairPresentation();
+            RailVehicleDesignBuilder.Apply();
+            RailVehicleDesignProbe.Verify(AssetDatabase.FindAssets("t:Prefab",new[]{Root+"/Prefabs"}).Select(g=>AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(g))).ToArray());
+            foreach(var guid in AssetDatabase.FindAssets("t:Prefab",new[]{Root+"/Prefabs"})){
+                var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(guid));
+                if(prefab.GetComponent<Vehicle>()!=null)MinecartIconBuilder.Render(prefab,prefab.name.Substring(0,prefab.name.Length-6));
+            }
+            BuildLibraryBundle();
+        }
+        public static void BuildPresentationBundle()
+        {
+            MeshyInfrastructureAssetBuilder.RepairPresentation();
+            BuildLibraryBundle();
+        }
+        private static void BuildLibraryBundle()
+        {
+            var scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
+            RegisterComponentIcons(scene.GetRootGameObjects().Single(n=>n.name=="Items").transform);
+            EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             ConfigureBundleDependencies();
             PlayerSettings.stripUnusedMeshComponents = false;
@@ -298,7 +359,7 @@ namespace EcoMinecarts.Editor
             EditorUtility.CopySerialized(texture,existing);UnityEngine.Object.DestroyImmediate(texture);EditorUtility.SetDirty(existing);return existing;
         }
 
-        private static GameObject CreateMinecartPrefab(IReadOnlyDictionary<string, Material> materials)
+        internal static GameObject CreateMinecartPrefab(IReadOnlyDictionary<string, Material> materials,string destination=null)
         {
             var root = CreateWorldRoot("MinecartObject", "Minecart.fbx", materials);
             var world = root.GetComponent<WorldObject>();
@@ -485,7 +546,7 @@ namespace EcoMinecarts.Editor
             MinecartRuntimeAssets.AttachCouplers(root, .806f);
             vehicle.AllVehicleColliders = root.GetComponentsInChildren<Collider>();
             RailRiderInteractionAssetBuilder.Configure(root);
-            return SavePrefab(root, "MinecartObject");
+            return SavePrefab(root, "MinecartObject",destination);
         }
 
         private enum TrackKind { Straight, Curve, Slope, Buffer }
@@ -651,9 +712,9 @@ namespace EcoMinecarts.Editor
                 Debug.Log("Eco Minecarts: optional client component is not exposed by this ModKit: " + typeName);
         }
 
-        private static GameObject SavePrefab(GameObject root, string name)
+        private static GameObject SavePrefab(GameObject root, string name,string destination=null)
         {
-            var prefab = PrefabUtility.SaveAsPrefabAsset(root, Prefabs + "/" + name + ".prefab");
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, destination??Prefabs + "/" + name + ".prefab");
             UnityEngine.Object.DestroyImmediate(root);
             if (prefab == null) throw new InvalidOperationException("Failed to save prefab " + name);
             return prefab;
@@ -712,6 +773,7 @@ namespace EcoMinecarts.Editor
             CreateItem(items.transform, itemTemplate, "TramTrackItem", AssetDatabase.LoadAssetAtPath<Sprite>(Root + "/Icons/TramTrackStraight.png"));
             CreateItem(items.transform, itemTemplate, "MinecartChainItem", AssetDatabase.LoadAssetAtPath<Sprite>(Root + "/Icons/MinecartChainStraight.png"));
             CreateItem(items.transform, itemTemplate, "MinecartChainDriveItem", AssetDatabase.LoadAssetAtPath<Sprite>(Root + "/Icons/ChainDrive.png"));
+            RegisterComponentIcons(items.transform);
             foreach (var prefab in worldPrefabs.Where(p => p.name != "MinecartObject" && p.name != "MineTrainObject" && p.name != "MinecartChainDriveObject"))
             {
                 var key = prefab.name.Substring(0, prefab.name.Length - 6);
@@ -750,6 +812,17 @@ namespace EcoMinecarts.Editor
             EditorSceneManager.SaveScene(scene, ScenePath);
         }
 
+        private static void RegisterComponentIcons(Transform items)
+        {
+            var template=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/EcoModKit/Prefabs/DefaultItem.prefab");
+            foreach(var key in new[]{"MineTrainDrivingComponent","TrainControllerComponent","RailConditionComponent","TrainFareComponent","RailVehicleAccessComponent","ChainDriveSpeedComponent","RailPowerConnectionComponent","TrainStationComponent","RailAutomationComponent","StationDepartureContext"}){
+                var sprite=AssetDatabase.LoadAssetAtPath<Sprite>(Root+"/Icons/"+(key.Contains("Station")||key.Contains("Condition")||key.Contains("Automation")?"TrainStation":key.Contains("Drive")||key.Contains("Power")?"ChainDrive":"MineTrain")+".png");
+                if(sprite==null)throw new InvalidOperationException("Missing component icon sprite: "+key);
+                var existing=items.Find(key);
+                if(existing==null)CreateItem(items,template,key,sprite);
+                else existing.GetComponentsInChildren<Image>(true).Single(i=>i.name=="Foreground").sprite=sprite;
+            }
+        }
         private static void CreateItem(Transform parent, GameObject template, string itemName, Sprite icon)
         {
             var item = UnityEngine.Object.Instantiate(template, parent);

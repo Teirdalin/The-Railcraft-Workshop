@@ -5,6 +5,16 @@ namespace Eco.Minecarts.Physics;
 /// <summary>Server-owned ballistic motion after leaving an open rail.</summary>
 public static class AirMotion
 {
+    public static float LandingClearance(Quaternion actual,Quaternion guided,Vector3 up,float halfWheelbase,float halfWidth)
+    {
+        var lift=0f;
+        foreach(var x in new[]{-halfWidth,halfWidth})foreach(var z in new[]{-halfWheelbase,halfWheelbase})
+        {
+            var wheel=new Vector3(x,0,z);
+            lift=Math.Max(lift,Vector3.Dot(Vector3.Transform(wheel,guided)-Vector3.Transform(wheel,actual),up));
+        }
+        return lift;
+    }
     public static Quaternion FollowTrajectory(Quaternion current, Vector3 velocity, int facingSign, double seconds)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/FollowTrajectory");

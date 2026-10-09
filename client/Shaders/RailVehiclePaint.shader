@@ -10,6 +10,8 @@ Shader "EcoMinecarts/Curved Paintable Vehicle"
         _BumpScale("Normal strength", Float) = 1
         _Metallic("Metallic", Range(0,1)) = 0
         _Glossiness("Smoothness", Range(0,1)) = 0.25
+        _MetallicGlossMap("Prepared surface: metal R, smoothness A", 2D) = "white" {}
+        _UsePackedSurface("Use prepared surface atlas", Float) = 0
         _ChannelRedColor("Body paint", Color) = (0,0,0,0)
         _ChannelGreenColor("Frame paint", Color) = (0,0,0,0)
         _ChannelBlueColor("Roof paint", Color) = (0,0,0,0)
@@ -28,11 +30,12 @@ Shader "EcoMinecarts/Curved Paintable Vehicle"
         #pragma multi_compile_instancing
         #pragma instancing_options assumeuniformscaling lodfade procedural:IndirectRenderingSetup
         #pragma multi_compile __ NO_CURVE MINIMAP_NO_CURVE
+        #pragma shader_feature_local _ RAILWORKS_SURFACE_ATLAS
         #include "../../EcoModKit/Shaders/CurvedHelper.cginc"
         #include "UnityStandardUtils.cginc"
-        sampler2D _MainTex, _BumpMap, _PaintCombinedTexture;
+        sampler2D _MainTex, _BumpMap, _PaintCombinedTexture, _MetallicGlossMap;
         float4 _Color, _ChannelRedColor, _ChannelGreenColor, _ChannelBlueColor;
-        float _Metallic, _Glossiness, _PaintedAmount, _BumpScale;
+        float _Metallic, _Glossiness, _PaintedAmount, _BumpScale, _UsePackedSurface;
         struct Input { float2 uv_MainTex; float2 uv_BumpMap; float2 uv_PaintCombinedTexture; };
         void RailVertex(inout appdata_full v)
         {
@@ -57,8 +60,14 @@ Shader "EcoMinecarts/Curved Paintable Vehicle"
             float grain = saturate(dot(original,float3(.2126,.7152,.0722)) * 2);
             o.Albedo = lerp(original * _Color.rgb, paint * lerp(.72,1.0,grain), coverage);
             o.Normal = UnpackScaleNormal(tex2D(_BumpMap,i.uv_BumpMap),_BumpScale);
-            o.Metallic = lerp(_Metallic, .02, coverage);
-            o.Smoothness = _Glossiness;
+            #ifdef RAILWORKS_SURFACE_ATLAS
+                float4 surface = tex2D(_MetallicGlossMap, i.uv_MainTex);
+                o.Metallic = lerp(surface.r, .02, coverage);
+                o.Smoothness = surface.a;
+            #else
+                o.Metallic = lerp(_Metallic, .02, coverage);
+                o.Smoothness = _Glossiness;
+            #endif
             o.Alpha = 1;
         }
         ENDCG

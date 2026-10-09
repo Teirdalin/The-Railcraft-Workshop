@@ -10,6 +10,7 @@ using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
 using Eco.Gameplay.Skills;
 using Eco.Minecarts.Runtime;
+using static Eco.Minecarts.Runtime.PoweredRailDrive;
 using Eco.Minecarts.Physics;
 using Eco.Minecarts.Track;
 using Eco.Shared.Localization;
@@ -53,24 +54,18 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     // lifting simulation budget when reducing that cost, including load sharing.
     private const float LiftSimulationWattsPerBlock = 25;
     private const float CoasterLiftSimulationWattsPerBlock = 100;
-    private static readonly ConcurrentDictionary<int, MinecartChainDriveObject> Drives = new();
-    private static readonly object DriveOrderGate = new();
-    private static MinecartChainDriveObject[] orderedDrives = [];
-    private static void RefreshDriveOrder()
-    { lock(DriveOrderGate) Volatile.Write(ref orderedDrives,Drives.Values.OrderBy(d=>d.ID).ToArray()); }
+    private static readonly PoweredRailRegistry<MinecartChainDriveObject> Drives=new();
     internal static IEnumerable<MinecartChainDriveObject> ActiveDrives => Drives.Values.Where(d=>!d.IsDestroyed);
     private readonly object gate = new();
     private HashSet<RailCell> cells = [];
-    private readonly Dictionary<int, DateTime> carts = [];
+    private readonly PoweredRailContacts carts=new(1);
     private bool running;
     private float lastDemand = -1;
 
-    private bool OwnsRun => !Volatile.Read(ref orderedDrives).Any(d => d.ID < this.ID && !d.IsDestroyed
+    private bool OwnsRun => !Drives.Snapshot.Any(d => d.ID < this.ID && !d.IsDestroyed
         && d.GetComponent<RailPowerConnectionComponent>().Connected && d.cells.Overlaps(this.cells));
     // Do not gate recovery on Parent.Enabled: the grid itself disables it when
     // supply falls. Only unrelated faults or an explicit off switch exclude it.
-    private static bool ReadyExceptPower(PowerGridComponent grid) => !grid.Parent.IsDestroyed &&
-        grid.Parent.Components.All(c => c==grid || (c.Enabled && (c is not IOperatingWorldObjectComponent op || op.Operating)));
     private float RequestedWatts => this.GetComponent<RailPowerConnectionComponent>().Connected && this.OwnsRun && ReadyExceptPower(this.GetComponent<PowerGridComponent>())
         ? ChainLift.GridDemand(this.cells.Count,this.GetComponent<ChainDriveSpeedComponent>().SpeedMultiplier,MaximumSpeedMultiplier) : 0;
 
@@ -89,15 +84,7 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     static MinecartChainDriveObject() => AddOccupancyList(typeof(MinecartChainDriveObject),
         new BlockOccupancy(Vector3i.Zero, typeof(BuildingWorldObjectBlock)));
     protected override void OnDestroy()
-    {
-        var cells=WorldOccupancy?.ToArray();var id=ObjectID;
-        Drives.TryRemove(ID,out _);
-        RefreshDriveOrder();
-        base.OnDestroy();
-        if(cells!=null)foreach(var cell in cells)
-            if(Eco.World.World.GetBlock(cell) is WorldObjectBlock block&&block.WorldObjectHandle.Id==id)
-                Eco.World.World.DeleteBlock(cell);
-    }
+    { var footprint=WorldOccupancy?.ToArray();var id=ObjectID;Drives.Remove(this);base.OnDestroy();PoweredRailDrive.RemoveFootprint(footprint,id); }
     public override LocString DisplayName => Localizer.DoStr("Rail Chain Drive");
     public virtual Type RepresentedItemType => typeof(MinecartChainDriveItem);
     private bool HasMechanicalPower
@@ -114,11 +101,8 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     protected override void Initialize()
     {
         base.Initialize();
-        this.GetComponent<PowerConsumptionComponent>().Initialize(0);
-        if(Electrical) this.GetComponent<PowerGridComponent>().Initialize(10, new ElectricPower());
-        else this.GetComponent<PowerGridComponent>().Initialize(5, new MechanicalPower());
-        Drives[this.ID] = this;
-        RefreshDriveOrder();
+        PoweredRailDrive.Initialize(this,Electrical);
+        Drives.Register(this);
     }
 
     public override void Tick()
@@ -148,7 +132,7 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     internal static Dictionary<RailCell, bool> ReadPowerIndicators()
     {
         var result = new Dictionary<RailCell, bool>();
-        foreach (var drive in Volatile.Read(ref orderedDrives))
+        foreach (var drive in Drives.Snapshot)
         {
             lock (drive.gate)
             {
@@ -161,11 +145,52 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
         return result;
     }
     internal static (double Watts,float Multiplier) LiftFor(RailCell cell, int cartId) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Vehicle propulsion lookup/LiftFor"); return LiftFor(cell,cartId,false); }
+    // A consist is one consumer per drive, even if several of its cars contact
+    // the same powered run. Retain contact until the last car clears the chain.
+    internal static (double Watts,float Multiplier) LiftForConsist(IEnumerable<RailCell> cells,int leaderId)
+        => LiftBudgetForConsist(cells,leaderId,false);
+    internal static (double Watts,float Multiplier) CoasterLiftForConsist(IEnumerable<RailCell> cells,int leaderId)
+        => LiftBudgetForConsist(cells,leaderId,true);
+    private static (double Watts,float Multiplier) LiftBudgetForConsist(IEnumerable<RailCell> cells,int leaderId,bool coaster)
+    {
+        var remaining=new HashSet<RailCell>(cells);double total=0;var speed=float.PositiveInfinity;
+        foreach(var drive in Drives.Snapshot)
+        {
+            if(drive.IsDestroyed)continue;
+            lock(drive.gate)
+            {
+                if(!remaining.Overlaps(drive.cells))continue;
+                remaining.ExceptWith(drive.cells); // Same first-drive ownership as LiftFor.
+                var multiplier=drive.GetComponent<ChainDriveSpeedComponent>().EffectiveSpeedMultiplier;
+                if(!drive.GetComponent<RailPowerConnectionComponent>().Connected||!drive.running||!drive.Enabled||!drive.HasMechanicalPower||multiplier<=0)continue;
+                var now=DateTime.UtcNow;
+                drive.carts.Touch(leaderId,now);
+                total+=drive.cells.Count*(coaster?CoasterLiftSimulationWattsPerBlock:LiftSimulationWattsPerBlock)*multiplier/drive.carts.Count;
+                speed=Math.Min(speed,multiplier);
+            }
+            if(remaining.Count==0)break;
+        }
+        return (total,float.IsFinite(speed)?speed:1);
+    }
+    internal static float PoweredSpeedFor(RailCell cell)
+    {
+        foreach(var drive in Drives.Snapshot)
+        {
+            if(drive.IsDestroyed)continue;
+            lock(drive.gate)
+            {
+                if(!drive.cells.Contains(cell))continue;
+                return drive.GetComponent<RailPowerConnectionComponent>().Connected&&drive.running&&drive.Enabled&&drive.HasMechanicalPower
+                    ?drive.GetComponent<ChainDriveSpeedComponent>().EffectiveSpeedMultiplier:0;
+            }
+        }
+        return 0;
+    }
     internal static (double Watts,float Multiplier) LiftFor(RailCell cell, int cartId, bool coaster)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Vehicle propulsion lookup/LiftFor");
         // One drive owns a run; parallel drives cannot accidentally multiply free traction.
-        foreach (var drive in Volatile.Read(ref orderedDrives))
+        foreach (var drive in Drives.Snapshot)
         {
             if (drive.IsDestroyed) continue;
             lock (drive.gate)
@@ -174,8 +199,7 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
                 var multiplier=drive.GetComponent<ChainDriveSpeedComponent>().EffectiveSpeedMultiplier;
                 if (!drive.GetComponent<RailPowerConnectionComponent>().Connected || !drive.running || !drive.Enabled || !drive.HasMechanicalPower) return (0,multiplier);
                 var now = DateTime.UtcNow;
-                foreach (var stale in drive.carts.Where(x => (now - x.Value).TotalSeconds > 1).Select(x => x.Key).ToArray()) drive.carts.Remove(stale);
-                drive.carts[cartId] = now;
+                drive.carts.Touch(cartId,now);
                 var wattsPerBlock=coaster ? CoasterLiftSimulationWattsPerBlock : LiftSimulationWattsPerBlock;
                 return (drive.cells.Count * wattsPerBlock * multiplier / drive.carts.Count,multiplier);
             }

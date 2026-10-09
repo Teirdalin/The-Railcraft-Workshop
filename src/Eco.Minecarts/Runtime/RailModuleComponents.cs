@@ -92,7 +92,7 @@ public sealed class RailConditionComponent : WorldObjectComponent, IPersistentDa
         this.lastTime = now; this.lastPosition = this.Parent.Position;
         if (this.ConditionPercent <= 0) this.Parent.GetComponent<MinecartMotionComponent>().Handbrake = true;
     }
-    [RPC, Autogen] public void Repair(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void Repair(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Repair", this.Parent);
         if (!this.Parent.IsAuthorized(player.User, AccessType.FullAccess) || Vector3.Distance(player.User.Position, this.Parent.Position) > 5) return;
@@ -108,7 +108,7 @@ public sealed class RailConditionComponent : WorldObjectComponent, IPersistentDa
     // Older open views may still send this RPC; discard edits rather than throwing.
     [RPC] public void SetConditionPercent(Player player, float value) {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/SetConditionPercent", this.Parent); }
-    [RPC, Autogen] public void Rerail(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void Rerail(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Rerail", this.Parent);
         if (this.Parent.IsAuthorized(player.User,AccessType.FullAccess) && Vector3.Distance(player.User.Position,this.Parent.Position)<=5)

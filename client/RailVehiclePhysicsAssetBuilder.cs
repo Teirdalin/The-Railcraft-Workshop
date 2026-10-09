@@ -10,7 +10,7 @@ namespace EcoMinecarts.Editor
         public static bool ServerOnly(GameObject root)
         {
             if(root.name=="MineTrainObject")return true;
-            if(root.name=="MinecartObject")return false;
+            if(root.name=="MinecartObject"||root.name=="WoodenMinecartObject")return true;
             var spec=RailExpansionAssetBuilder.ReadCatalog().Vehicles.Single(s=>s.Key+"Object"==root.name);
             return !spec.Pullable&&!spec.HumanPowered;
         }
@@ -24,6 +24,11 @@ namespace EcoMinecarts.Editor
                 sync.SyncVelocity=false;sync.distanceToIgnorePhysics=0;
                 var body=root.GetComponent<Rigidbody>();body.isKinematic=true;body.useGravity=false;
                 foreach(var wheel in root.GetComponentsInChildren<WheelCollider>(true))wheel.enabled=false;
+                if(root.name=="MinecartObject"||root.name=="WoodenMinecartObject"||root.name=="MineTrainObject")
+                {
+                    root.GetComponent<RCCCarControllerV2>().enabled=false;
+                    var limit=root.GetComponent<LimitVelocity>();if(limit!=null)limit.enabled=false;
+                }
             }
             // Child walking surfaces are distinct PhysX bodies. A transform
             // parent does NOT prevent them from colliding with their own chassis.
@@ -99,6 +104,18 @@ namespace EcoMinecarts.Editor
             finally { PrefabUtility.UnloadPrefabContents(root); }
             RefreshAndBuildBundle();
             Debug.Log("CORNER_CONSIST_ASSETS_OK: native Rigidbody guided ownership binding on all vehicles; handcar maximum 8 m/s.");
+        }
+        public static void BuildManualMinecartPatch()
+        {
+            foreach(var name in new[]{"MinecartObject","WoodenMinecartObject"})
+            {
+                var path="Assets/EcoMinecarts/Prefabs/"+name+".prefab";
+                var root=PrefabUtility.LoadPrefabContents(path);
+                try{Configure(root);VerifyGuidance(root);PrefabUtility.SaveAsPrefabAsset(root,path);}
+                finally{PrefabUtility.UnloadPrefabContents(root);}
+            }
+            AssetDatabase.SaveAssets();MinecartAssetBuilder.BuildAuthoredClientBundle();
+            Debug.Log("MANUAL_MINECART_ASSETS_OK: two minecarts use coaster-style server pose synchronization; native RCC, velocity limiter and wheel forces disabled.");
         }
     }
 }

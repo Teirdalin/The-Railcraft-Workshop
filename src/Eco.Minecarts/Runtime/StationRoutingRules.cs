@@ -27,7 +27,7 @@ public sealed partial class TrainStationComponent
     [Serialized,ThreadSafe] private List<StationDestinationRule>? destinationRules;
     private List<StationDestinationRule> DestinationRules=>destinationRules??=new();
     [SyncToView,Autogen,PropReadOnly,LocDisplayName("Conditional Destinations")]
-    public string ConditionalDestinations
+    public string DestinationRulesSummary
     {
         get{lock(settingsGate)return DestinationRules.Count==0?"Optional: no routing rules; follow the normal route"
             :string.Join("\n",DestinationRules.Select((r,i)=>$"{i+1}. IF {r.Conditions?.Description().ToString()??"choose conditions"} THEN {Find(r.Destination)?.StationName??"destination missing or not selected"}"));}
@@ -43,7 +43,9 @@ public sealed partial class TrainStationComponent
         var context=DepartureContext(train,dwell);
         return candidates.Where(r=>StationNativeConditions.Ready(r.Conditions,context)).Select(r=>r.Copy()).ToArray();
     }
-    [RPC,Autogen]
+    [RPC,Autogen,UITypeName("BigButton")]
+    public void ConditionalDestinations(Player player)=>ManageConditionalDestinations(player);
+    [RPC]
     public void ManageConditionalDestinations(Player player){if(CanConfigure(player))_=ManageDestinations(player);}
     private async Task ManageDestinations(Player player)
     {

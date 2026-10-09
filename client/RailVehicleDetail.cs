@@ -43,7 +43,7 @@ namespace EcoMinecarts.Editor
         }
         static void MeshPart(Transform parent,string name,Vector3 at,Mesh mesh,Material mat)
         {var n=new GameObject(name,typeof(MeshFilter),typeof(MeshRenderer));n.transform.SetParent(parent,false);n.transform.localPosition=at;n.GetComponent<MeshFilter>().sharedMesh=mesh;n.GetComponent<Renderer>().sharedMaterial=mat;}
-        static void ArchedRoof(Transform p,string name,Vector3 at,float width,float length,float rise,Material mat)
+        internal static void ArchedRoof(Transform p,string name,Vector3 at,float width,float length,float rise,Material mat)
         {
             var shape=new Shape();const int spans=12;const float thick=.045f;
             for(var i=0;i<spans;i++){
@@ -127,12 +127,9 @@ namespace EcoMinecarts.Editor
                 }
                 if(root.name=="MineTrainObject")Pin(gear,"Steam cylinder",cylinder,.095f,.30f,dark,Quaternion.Euler(90,0,0));
                 Pipe(gear,"Piston guide",cylinder+Vector3.back*.12f,cylinder+Vector3.back*.40f,.027f,steel);
-                SoftBox(gear,"Crosshead slide",cylinder+Vector3.back*.28f,new Vector3(.07f,.08f,.12f),.013f,steel);
                 for(var z=-wb/2;z<=wb/2+.01f;z+=wb){
-                    Pin(gear,"Rod crank boss",new Vector3(side*(gauge+.066f),.20f,z),.044f,.035f,brass,Quaternion.Euler(0,0,90));
                     Box(gear,"Brake hanger",new Vector3(side*(gauge+.025f),.29f,z-.16f),new Vector3(.028f,.21f,.04f),dark);
                 }
-                Pipe(gear,"Valve linkage",new Vector3(side*(gauge+.075f),.32f,-wb*.30f),new Vector3(side*(gauge+.075f),.32f,wb*.32f),.014f,steel);
             }
             var bell=new Vector3(-r*.50f,c.y+r+.10f,c.z-length*.22f);
             Pin(body,"Bell base",bell,.061f,.10f,brass,Quaternion.identity);
@@ -239,10 +236,15 @@ namespace EcoMinecarts.Editor
                 SoftBox(gear,"Headrest",new Vector3(x,1.46f,-.115f),new Vector3(.32f,.14f,.09f),.025f,padding);
                 SoftBox(gear,"Seat plinth",new Vector3(x,.67f,-.01f),new Vector3(.26f,.30f,.25f),.025f,dark);
                 foreach(var dx in new[]{-.218f,.218f})SoftBox(gear,"Bucket bolster",new Vector3(x+dx,1.025f,-.07f),new Vector3(.052f,.24f,.30f),.017f,padding);
-                Pipe(gear,"Restraint swing arm",new Vector3(x+side*.225f,.80f,-.13f),new Vector3(x+side*.225f,1.12f,.225f),.020f,steel);
+                // Batch the complete moving restraint separately from the fixed
+                // seat/frame so the original artwork can use a native hinge.
+                var hinge=new Vector3(x+side*.225f,.80f,-.13f);
+                var restraint=Group(gear.parent,side<0?"Left restraint assembly":"Right restraint assembly");
+                restraint.localPosition=hinge;
+                Pipe(restraint,"Restraint swing arm",Vector3.zero,new Vector3(hinge.x,1.12f,.225f)-hinge,.020f,steel);
                 Pin(gear,"Restraint hinge",new Vector3(x+side*.238f,.80f,-.13f),.054f,.026f,brass,Quaternion.Euler(0,0,90));
-                Pipe(gear,"Lap restraint crossbar",new Vector3(x-.205f,1.12f,.225f),new Vector3(x+.205f,1.12f,.225f),.023f,steel);
-                SoftBox(gear,"Padded lap restraint",new Vector3(x,1.115f,.205f),new Vector3(.34f,.11f,.13f),.035f,padding);
+                Pipe(restraint,"Lap restraint crossbar",new Vector3(x-.205f,1.12f,.225f)-hinge,new Vector3(x+.205f,1.12f,.225f)-hinge,.023f,steel);
+                SoftBox(restraint,"Padded lap restraint",new Vector3(x,1.115f,.205f)-hinge,new Vector3(.34f,.11f,.13f),.035f,padding);
                 foreach(var end in new[]{-1,1}){
                     var z=end*.40f;
                     SoftBox(gear,"Captive wheel yoke",new Vector3(side*.39f,.10f,z),new Vector3(.09f,.37f,.21f),.025f,dark);

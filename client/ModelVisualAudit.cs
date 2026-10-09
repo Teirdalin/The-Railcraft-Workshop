@@ -111,6 +111,7 @@ namespace EcoMinecarts.Editor
                 var obj=new GameObject(block.Name);
                 obj.AddComponent<MeshFilter>().sharedMesh=usage.blockMeshLodGroup.LOD0[0].mesh;
                 obj.AddComponent<MeshRenderer>().sharedMaterials=new[]{block.Material}.Concat(block.Materials).ToArray();
+                obj.transform.rotation=Quaternion.Euler(usage.importRotation);
                 Inspect(obj,block.Name,camera,false); Object.DestroyImmediate(obj);
             }
             foreach(var group in RailExpansionAssetBuilder.ReadCatalog().CoasterTerrain.GroupBy(x=>x.SourceKey)) {

@@ -54,10 +54,11 @@ namespace EcoMinecarts.Editor
             if(spec.HumanPowered) {
                 var copy=Object.Instantiate(prefab);
                 try {
-                    var clip=copy.GetComponent<Animator>().runtimeAnimatorController.animationClips.Single();
+                    var host=copy.transform.Find("Handcar pump animation")??copy.transform;
+                    var clip=host.GetComponent<Animator>().runtimeAnimatorController.animationClips.Single(c=>c.name=="HandcarPump");
                     for(int i=0;i<=256;i++) {
-                        clip.SampleAnimation(copy,i/256f);
-                        var rod=copy.transform.Find("PumpRod"); var upper=copy.transform.Find("PumpPivot/Linkage upper pin"); var lower=copy.transform.Find("PumpSlider");
+                        clip.SampleAnimation(host.gameObject,i/256f);
+                        var rod=host.Find("PumpRod"); var upper=host.Find("PumpPivot/Linkage upper pin"); var lower=host.Find("PumpSlider");
                         if(Vector3.Distance(rod.TransformPoint(Vector3.up),upper.position)>.0005f
                             || Vector3.Distance(rod.TransformPoint(Vector3.down),lower.position)>.0005f)
                             throw new Exception("Handcar connecting rod disconnects at animation phase "+i+"/256");

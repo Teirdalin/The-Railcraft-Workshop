@@ -34,6 +34,7 @@ namespace EcoMinecarts.Editor
             result.Add(Infrastructure("WideRailTurn", materials));
             result.Add(Infrastructure("TramWideRailTurn", materials));
             result.Add(Infrastructure("BrokenWoodenTrack", materials));
+            result.Add(Infrastructure("MinecartDumpRail", materials));
             result.Add(Infrastructure("TramStop",materials));
             result.Add(Infrastructure("TramCableDrive",materials));
             result.AddRange(IndustrialTrackAssetBuilder.Build(ReadCatalog().IndustrialTracks, materials));
@@ -41,7 +42,7 @@ namespace EcoMinecarts.Editor
             result.AddRange(CoasterAssetBuilder.Build(ReadCatalog().Coasters,materials));
             return result;
         }
-        private static GameObject Vehicle(Spec spec, GameObject cart, GameObject engine, IReadOnlyDictionary<string, Material> materials)
+        internal static GameObject Vehicle(Spec spec, GameObject cart, GameObject engine, IReadOnlyDictionary<string, Material> materials)
         {
             var root = Object.Instantiate(spec.Pullable ? cart : engine);
             root.name = spec.Key + "Object";
@@ -426,6 +427,14 @@ namespace EcoMinecarts.Editor
                     collider.transform.rotation = Quaternion.LookRotation(to - from);
                 }
             }
+            else if(key=="MinecartDumpRail")
+            {
+                for(var z=-.4f;z<=.41f;z+=.2f)Box(root.transform,"Dump rail sleeper",new Vector3(0,-.42f,z),new Vector3(.92f,.07f,.12f),wood);
+                foreach(var side in new[]{-1,1})Box(root.transform,"Continuous rail",new Vector3(side*.30f,-.38f,0),new Vector3(.06f,.06f,1),iron);
+                Box(root.transform,"Unloading chute",new Vector3(0,-.43f,0),new Vector3(.42f,.08f,.70f),iron);
+                foreach(var side in new[]{-1,1})Box(root.transform,"Dump rail indicator",new Vector3(side*.47f,-.39f,0),new Vector3(.045f,.05f,.70f),paint);
+                Hit(root.transform,"Dumping Rail",new Vector3(0,-.41f,0),new Vector3(.94f,.12f,1),null);
+            }
             else if (key == "BrokenWoodenTrack")
             {
                 for (var i = 0; i < 7; i++) { var splinter = Box(root.transform, "Broken timber", new Vector3((i % 3 - 1) * .22f, -.38f, (i / 3 - 1) * .28f), new Vector3(.12f, .06f, .48f), wood); splinter.localRotation = Quaternion.Euler(0, i * 47, i % 2 * 9); }
@@ -481,6 +490,7 @@ namespace EcoMinecarts.Editor
             TramAccessAssetBuilder.GroundStation(root);
             return Save(root);
         }
+        public static GameObject DumpRail(IReadOnlyDictionary<string,Material> materials)=>Infrastructure("MinecartDumpRail",materials);
         private static Transform Anchor(GameObject root, string name, Vector3 position)
         { var node = new GameObject(name).transform; node.SetParent(root.transform, false); node.localPosition = position; return node; }
         internal static void ConfigureCoasterEndShove(GameObject root)

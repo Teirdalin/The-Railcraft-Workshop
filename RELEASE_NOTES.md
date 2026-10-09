@@ -1,3 +1,86 @@
+# 0.2.67 prerelease - original coaster guardrails
+
+- Animate the original coaster's complete visible padded bars and swing arms through the existing replicated boarding/secured controller. The bars rise for boarding and lower before station departure. Their opening arc clears the original seat backs.
+- Allow the latest restraint state to interrupt an earlier transition regardless of controller transition ordering, including reopening after a cancelled departure. Seats, wheels and vehicle physics stay fixed while the bars move.
+- Exported-bundle checks cover raising, lowering, interrupted motion, rotated car frames, seat clearance and native rig stability. Private Eco-server checks cover departure gating and state replication. Connected-player visual and multiplayer acceptance remain pending.
+
+## Included updates since the previous GitHub release (0.2.40)
+
+- Ship original artwork for all fourteen vehicles. Newer vehicle models are preserved outside the public bundle for future updates; `NewDesign` remains compatible with old settings but does not load those deferred meshes. The server ZIP is 42.5 MiB.
+- Use each coupled coaster car's own position/contact and airborne state for landing rotation within the shared movement/coupling systems. Improve queued-car departure, chain traction across a consist, station power continuity, and slopes/loops.
+- Remove automatic positional recovery resets on loading. Coaster stations provide **Return carts to station**, available once per station per server restart. Do not assume that saved momentum always resumes correctly on load; live restart behavior remains a validation task.
+- Keep the improved mouse-controlled coaster camera in a separate optional BepInEx package. Each player installs the compatible BepInEx 6 IL2CPP loader and plugin locally; joining a server does not install it.
+- Correct handcar curve guidance and stop/dismount animation state; retain real-motion wheel and pump animation and original rider fitting.
+- Add automatic train lighting at night and under high tunnel/cave cover, face-mounted tram lights, original coach roof/seating clearance, engine latch clearance, and station deck/chain-drive presentation repairs.
+- Provide an editable coaster-station sign, corrected station occupancy, and the missing component icons. Keep cargo, fuel, recipes, owner-editable balance and existing saved identities compatible.
+- The server ZIP contains only `Railworks.dll`, `Railworks.unity3d` and fourteen editable `Vehicles/*.cs` files. Installation documentation stays on GitHub, outside server data folders. The optional camera ZIP contains its plugin and a local-installation README.
+
+# 0.2.54 test build - lamp faces and presentation corrections
+
+- Put the tram's two warm spotlights and illuminated lenses at the actual headlamp faces, following Eco's steam-truck lamp settings. Remove the small lower lamp cylinders; retain replicated night control in both designs.
+- Move the handcar pump and pushrod to an independent child Animator driven by the same real movement updates as the working wheels. Smoothly park the mechanism when stopped.
+- Replace the perforated imported station deck with a closed timber platform at the existing boarding height. Inset smaller chain-drive backing plates inside both housings.
+- Bridge the original large-engine boiler and cab with a matching firebox neck.
+- Preserve original-design defaults, customized vehicle settings and all saved identities. Private-server and exported asset checks remain separate from live Eco acceptance.
+
+# 0.2.53 test build - seating and presentation repairs
+
+- Add two physical wooden chairs under the original tram's middle passenger positions; retain all six passenger places.
+- Raise coaster and passenger-car rider attachments by 20 cm, with additional original coach roof clearance. Preserve independent design fits and current design choices.
+- Remove protruding decorative dump-hinge cylinders; dumping pivots, wheels and cargo transfer remain intact.
+- Restore handcar pumping and pushrod animation on a separate shared-controller layer, with smooth return to the parked pose.
+- Back both chain-drive faces with dark interior plates and close the coaster station timber floor gap.
+- Correct zero station prefab sizes and register icons for the components reported in client logs.
+- Private server and exported asset checks remain separate from live seating, multiplayer and rendering acceptance.
+
+# 0.2.52 test build - original designs for release
+
+- All fourteen release vehicle configurations default NewDesign to false. Unconfigured/older settings also default to originals; individual true overrides retain the experimental designs.
+- Shared gameplay and saved identities are retained. Design fits now include collision scales, exits, attachment emitters and unique collision paths. Experimental cab details no longer overlay original artwork.
+- Experimental collision fitting uses its own model/deck geometry instead of the inherited short minecart underframe and original roof/deck elevations. Original collision fitting comes independently from the archived post-wheel vehicle assets.
+- Original coaster restraints now follow the shared replicated boarding/securing hinges.
+- Native state-preservation and exported original/experimental collision, seating, exit and moving visibility checks gate staging. Human riding, live multiplayer rendering and actual world acceptance remain unverified.
+
+# 0.2.51 test build - per-vehicle designs and cart corrections
+
+- NewDesign defaults to true in all fourteen editable vehicle files. False selects post-wheel/pre-graphics artwork and rider/interaction fitting while retaining shared current physics and animation. Older files without the field default to true; upgrades preserve existing balances and choices.
+- Regenerate the wooden cart from raw standard-cart construction and shared native builders. No LOD switching; lower capacities remain 400 kg / 8 slots.
+- Lower coaster seat assemblies by 12 cm and reduce center spacing from 62 to 50 cm. Move rider anchors and restraints with the seats.
+- Extend whole-consist chain traction to trailing coaster axles after the leader crosses the crest, budgeting power once per drive/consist.
+- Preserve all 936 saved definitions, recipes, cargo and vehicle identities. Live gameplay and multiplayer acceptance remain separate from private-server and exported checks.
+
+# 0.2.49 test build - integrated vehicle models and native animation
+
+- Replace the meshes on all fourteen existing vehicle identities. Original source files, recipes, owner-editable balance, fuel/cargo rules and saved types remain intact. Raw library parts have three LODs, packed surface textures and shared wheel assets. Updated inventory icons use the new models.
+- **Mine Train:** compact boiler fitted ahead of the usable native cab; shared wheel/rod mechanism and independently fitted operator chair.
+- **Passenger Locomotive, Freight Locomotive and Large Train Engine:** individually fitted new boiler/chassis bodies; reconstructed playable cabs, curved roofs, framed rear windows, backheads, gauge panels and native physical controls. Throttle, brake and reverser levers reflect replicated commands with smooth transitions. Gauges are decorative, not false live instruments.
+- **Standard Minecart and Wooden Minecart:** separate new chassis, flanged wheels and steel/wooden buckets on visible tipping bearings. Retain manual cart control and shared guided movement; no station autopilot is added.
+- **Coal Tender, Large Coal Tender and Large Cargo Car:** fitted hopper bodies and reinforced underframes, shared wheel animation and side-tipping buckets. Dumping remains subject to each editable `AllowDumping` setting and successful cargo transfer.
+- **Small Passenger Car and Large Passenger Car:** new covered coach bodies with inward-facing bench places. Cushion heights and deck collision follow the meshes; small-car riders are staggered to reduce opposing-leg overlap. Existing passenger capacities remain unchanged.
+- **Heritage Tram:** retain the open-sided trolley, with six outward-facing passenger places on measured bench surfaces. Align the deck collider and remove obsolete bench blockers.
+- **Railroad Handcar:** new chassis and pump handle on the existing mechanical pump pivot; real-motion wheels and native input remain shared with the current vehicle framework.
+- **Roller Coaster Cart:** lower the two separately modeled seats into the body, remove the added seat pedestals, preserve upstop rollers and add two hinged restraints. Station conditions initiate a smooth close; dispatch waits for it, cancelled departure reopens at rest, and motion keeps the bars secured. Startup recovery restores boarding state.
+- Replace the generated locomotive rear interiors where they obstructed the verified cab space. Cab body cuts interpolate triangle attributes, preserve source meshes and rebuild from clean geometry on every export. Batch new static instrument details by material. Side dump hinges now meet the new bucket bottoms without lifting the chassis or wheels.
+- Clear older restraint/control triggers before applying each replicated pose, including repeated default states and several updates before a rendered frame. Both locomotive smoke emitters follow the replacement chimney geometry.
+- All 20 prepared source assets passed geometry checks: 23,333,735 source triangles reduced to 281,953 combined LOD0 triangles, with all 100 original source files unchanged. This is the complete parts library total, not the triangles drawn by one vehicle. The alternate Minetrain remains an authoring alternative; the separate stake flatbed has no existing wagon identity.
+- The 0.2.49 server compiled with zero warnings/errors and passed private Eco-server motion, coupling, grade, routing, departure, timed dumping and restraint/control regressions. Saved-schema comparison against 0.2.48 preserves all 936 definitions with no additions. Final exported-bundle and installation receipts live in `validation/models-0.2.49` and `validation/railworks-0.2.49`; a build result alone is not live gameplay acceptance.
+- Final exported Unity checks passed: 60 native wheel Animators, eight quartered slider-cranks, five dump buckets, smooth cab controls, both restraint hinges after rapid state changes, four cabs' entry clearance/control rays, and all fourteen native mount configurations. Installed with a persistent backup; ZIP contents and installed DLL/bundle hashes match. Connected-player gameplay and multiplayer rendering have not been tested.
+
+Manual acceptance: board every vehicle, check third-person hip/leg fit and first-person visibility, use cab controls and both exits, accelerate/reverse/stop and negotiate curves/slopes, watch from another client, test coaster cancellation/departure/return, and dump in both approach directions including full/restricted receiving storage. Passenger dismount must not freeze the vehicle. Native camera behavior and the existing sitting pose still constrain individual avatar fit; no unsupported camera patch is included.
+
+# 0.2.42 test build - remove competing guided movement snaps
+
+- Remove the recurring hard position sync introduced in 0.2.41. Coupled/shoved vehicles now publish only the interpolated native physics stream during continuous movement; recurring absolute snaps no longer compete with buffered poses.
+- Preserve explicit absolute synchronization at coaster recovery, placement and native ownership handoff. Manual pulling behavior, client assets, saved definitions, cargo and editable balance settings are unchanged.
+- Native regression checks assert no forced sync during guided movement across the former one-second interval, while current poses and kinematic ownership still reach outgoing packets. Live coupled/shove multiplayer smoothness remains acceptance testing.
+# 0.2.41 test build - coaster startup recovery and guided pose repair
+
+- Persist each coaster cart's home loading station, latest departure sequence and body orientation. On server startup, wait for world/object loading and coupling reconciliation, then return assigned carts to straight, level connected loading track behind their station in departure order. Preserve saved couplings and inventories, reset flight/derail motion and explicitly publish the restored poses.
+- Validate the whole station queue before moving it. If approach track is short, obstructed, or changed couplings conflict with departure order, retain all positions and report the reason in Startup Recovery. Legacy unassigned carts use a single station as fallback with deterministic order; when multiple stations exist, they need a recorded station visit/departure before recovery can identify their home. Existing saves cannot supply historical departure order retroactively.
+- Add rate-bounded absolute pose repair during server-guided movement, complementing interpolated physics packets when a client retains an old pose after ownership/coupling/shove changes. Native pulling ownership is excluded. Live multiplayer acceptance remains required.
+- Restore Minecart Dumping Rail at the Railworks workbench. Authorized linked output inventories receive cargo using native capacity/item restrictions; rejected cargo remains aboard. Add AllowDumping to each editable vehicle file (standard/wooden minecarts enabled by default, other vehicles opt in).
+- Anchor all fourteen native snap-placement volumes at their wheel-contact pivots instead of subtracting an elevated preview bottom into the ground. Widen initial vertical rail capture only; live placement acceptance remains required.
+- Preserve all 929 previous saved definitions; seven additive definitions bring the schema to 936. Preserve custom vehicle settings while adding the new missing dumping option.
 # 0.2.40 prerelease - editable vehicle C# balance files
 
 - Supply one standalone Eco UserCode `.cs` file for each of the 14 vehicles. Server owners can edit storage slots, cargo capacity, inventory-item weight, physical empty mass and performance/maintenance values, then restart Eco without a source-build project.
@@ -432,3 +515,17 @@ First release candidate, targeting Eco 0.14.1.1 beta release-1079.
 Validation evidence is retained in the development project's `validation` directory. Server probes exercise ownership, station settings, fares/removal, chain speed, passengers, switches, quick transfers, coupled-load restoration and slope support. Physics probes cover guidance, momentum, ramps, corners, brakes and connection geometry. Bundle and rendered-model audits check object registrations, meshes, materials, colliders and native bindings.
 
 These are offline/private-server checks. They do not certify smooth rendering, seat/camera presentation or UI operation on a connected live client. The first release remains beta until the owner completes that playtest. No public upload is implied by creating this package.
+
+
+
+
+
+
+
+
+
+# 0.2.43 — manual minecart test candidate
+
+Rebuilt standard and wooden minecarts around one authoritative server rail state. Movement uses the shared coaster rail dynamics and pose sampling; native client driving and wheel forces no longer compete with it. Walking handles provide force input without mounting or correcting the player's position. Shoves act on the consist leader, and followers use its rail path. Existing object/component identifiers and serialized definitions remain compatible.
+
+Verified: production build without warnings/errors, saved-schema compatibility, real Eco server single-cart/brake/client-packet rejection tests for both cart types, coupled follower tests, dumping rail and coaster recovery regressions, and the exported bundle's ownership/physics settings with unchanged geometry/material payloads. Pending: live client rendering, E-grab walking, bucket passengers, curves/slopes/powered chains and multiplayer. This is a test candidate, not a live-verified release.

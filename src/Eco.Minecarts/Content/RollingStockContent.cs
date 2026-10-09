@@ -48,11 +48,9 @@ public abstract class RollingStockObject : RailVehicleObject, IRepresentsItem
         this.GetComponent<MinimapComponent>().SetCategory(Localizer.DoStr("Vehicles"));
         if (spec.Pullable || spec.HumanPowered) this.GetComponent<VehicleComponent>().HumanPowered(spec.HumanPowered ? 1.2f : .8f);
         this.GetComponent<VehicleComponent>().Initialize((float)spec.MaximumSpeed, 1, spec.Powered ? Math.Max(2,spec.PassengerSeats+1) : spec.Pullable ? 3 : spec.PassengerSeats + 1);
-        if (spec.Powered && !spec.Tram)
+        if (Capabilities.HasFlag(RailVehicleCapabilities.FueledMotor))
         {
-            this.GetComponent<FuelSupplyComponent>().Initialize(spec.Length > 3 ? 4 : 2, ["Burnable Fuel"]);
-            this.GetComponent<FuelConsumptionComponent>().Initialize(RailEconomy.FuelWatts(spec));
-            this.GetComponent<AirPollutionComponent>().Initialize(.1f);
+            RailFuelSystem.Initialize(this);
         }
         else if (spec.Tram && this.GetComponent<FuelSupplyComponent>() is { } legacyFuel)
         {
@@ -64,52 +62,11 @@ public abstract class RollingStockObject : RailVehicleObject, IRepresentsItem
     }
 }
 
-[Serialized, RequireComponent(typeof(MinecartRidingComponent))]
-public sealed class WoodenMinecartObject : RollingStockObject { static WoodenMinecartObject() => AddOccupancy<WoodenMinecartObject>([]); }
-[Serialized, MayHaveComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(TrainControllerComponent)), RequireComponent(typeof(TramRouteComponent))]
-public sealed class HeritageTramObject : RollingStockObject { static HeritageTramObject() => AddOccupancy<HeritageTramObject>([]); }
-[Serialized, RequireComponent(typeof(HandcarDrivingComponent))]
-public sealed class RailroadHandcarObject : RollingStockObject { static RailroadHandcarObject() => AddOccupancy<RailroadHandcarObject>([]); }
-[Serialized, RequireComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(FuelConsumptionComponent)), RequireComponent(typeof(AirPollutionComponent)), RequireComponent(typeof(MineTrainDrivingComponent)), RequireComponent(typeof(TrainControllerComponent))]
-public sealed class PassengerLocomotiveObject : RollingStockObject { static PassengerLocomotiveObject() => AddOccupancy<PassengerLocomotiveObject>([]); }
-[Serialized, RequireComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(FuelConsumptionComponent)), RequireComponent(typeof(AirPollutionComponent)), RequireComponent(typeof(MineTrainDrivingComponent)), RequireComponent(typeof(TrainControllerComponent))]
-public sealed class FreightLocomotiveObject : RollingStockObject { static FreightLocomotiveObject() => AddOccupancy<FreightLocomotiveObject>([]); }
-[Serialized, RequireComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(FuelConsumptionComponent)), RequireComponent(typeof(AirPollutionComponent)), RequireComponent(typeof(MineTrainDrivingComponent)), RequireComponent(typeof(TrainControllerComponent))]
-public sealed class LargeTrainEngineObject : RollingStockObject { static LargeTrainEngineObject() => AddOccupancy<LargeTrainEngineObject>([]); }
-[Serialized] public sealed class PassengerCarObject : RollingStockObject { static PassengerCarObject() => AddOccupancy<PassengerCarObject>([]); }
-[Serialized] public sealed class CoalTenderObject : RollingStockObject { static CoalTenderObject() => AddOccupancy<CoalTenderObject>([]); }
-[Serialized] public sealed class LargeCargoCarObject : RollingStockObject { static LargeCargoCarObject() => AddOccupancy<LargeCargoCarObject>([]); }
-[Serialized] public sealed class LargePassengerCarObject : RollingStockObject { static LargePassengerCarObject() => AddOccupancy<LargePassengerCarObject>([]); }
-[Serialized] public sealed class LargeCoalTenderObject : RollingStockObject { static LargeCoalTenderObject() => AddOccupancy<LargeCoalTenderObject>([]); }
-
 public abstract class RailModuleItem<T> : WorldObjectItem<T>, IPersistentData where T : WorldObject
 {
     [Serialized, SyncToView, NewTooltipChildren(CacheAs.Instance, flags: TTFlags.AllowNonControllerTypeForChildren)]
     public object PersistentData { get; set; } = null!;
 }
-[LocDescription("Crafted at the Wainwright Table using Basic Engineering.")]
-[Serialized, LocDisplayName("Wooden Minecart"), Weight(10000)] public sealed class WoodenMinecartItem : RailModuleItem<WoodenMinecartObject> { }
-[Serialized, LocDisplayName("Heritage Tram"), LocDescription("Automated city tram. Runs only on Tram Rail connected to a powered mechanical or electrical Tram Cable Drive. No onboard fuel is needed. Use either end panel to open settings; configure its route in the Tram Route page. Crafted at the Electric Machinist Table using Industry."), Weight(15000)]
-public sealed class HeritageTramItem : RailModuleItem<HeritageTramObject> { }
-[Serialized, LocDisplayName("Railroad Handcar"), LocDescription("Human-powered rail platform with a pumping lever. Operate from the platform; light loads only. Uses calories, not fuel. Crafted at the Wainwright Table using Basic Engineering."), Weight(10000)]
-public sealed class RailroadHandcarItem : RailModuleItem<RailroadHandcarObject> { }
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
-[Serialized, LocDisplayName("Passenger Locomotive"), Weight(15000)] public sealed class PassengerLocomotiveItem : RailModuleItem<PassengerLocomotiveObject> { }
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
-[Serialized, LocDisplayName("Heavy-Haul Locomotive"), Weight(15000)] public sealed class FreightLocomotiveItem : RailModuleItem<FreightLocomotiveObject> { }
-[LocDescription("Crafted at the Wainwright Table using Basic Engineering.")]
-[Serialized, LocDisplayName("Passenger Car"), Weight(15000)] public sealed class PassengerCarItem : RailModuleItem<PassengerCarObject> { }
-[LocDescription("Crafted at the Wainwright Table using Basic Engineering.")]
-[Serialized, LocDisplayName("Coal Tender"), Weight(15000)] public sealed class CoalTenderItem : RailModuleItem<CoalTenderObject> { }
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
-[Serialized, LocDisplayName("Large Train Engine"), Weight(15000)] public sealed class LargeTrainEngineItem : RailModuleItem<LargeTrainEngineObject> { }
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
-[Serialized, LocDisplayName("Large Cargo Car"), Weight(15000)] public sealed class LargeCargoCarItem : RailModuleItem<LargeCargoCarObject> { }
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
-[Serialized, LocDisplayName("Large Passenger Car"), Weight(15000)] public sealed class LargePassengerCarItem : RailModuleItem<LargePassengerCarObject> { }
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
-[Serialized, LocDisplayName("Large Coal Tender"), Weight(15000)] public sealed class LargeCoalTenderItem : RailModuleItem<LargeCoalTenderObject> { }
-
 public abstract class RollingStockRecipe<T> : RecipeFamily where T : Item, new()
 {
     protected RollingStockRecipe()
@@ -134,14 +91,3 @@ public abstract class RollingStockRecipe<T> : RecipeFamily where T : Item, new()
         CraftingComponent.AddRecipe(RailRecipeWorkshops.For(this.GetType()), this);
     }
 }
-[RequiresSkill(typeof(BasicEngineeringSkill), 1)] public sealed class WoodenMinecartRecipe : RollingStockRecipe<WoodenMinecartItem> { }
-[RequiresSkill(typeof(IndustrySkill), 3)] public sealed class HeritageTramRecipe : RollingStockRecipe<HeritageTramItem> { }
-[RequiresSkill(typeof(BasicEngineeringSkill), 2)] public sealed class RailroadHandcarRecipe : RollingStockRecipe<RailroadHandcarItem> { }
-[RequiresSkill(typeof(MechanicsSkill), 3)] public sealed class PassengerLocomotiveRecipe : RollingStockRecipe<PassengerLocomotiveItem> { }
-[RequiresSkill(typeof(MechanicsSkill), 3)] public sealed class FreightLocomotiveRecipe : RollingStockRecipe<FreightLocomotiveItem> { }
-[RequiresSkill(typeof(BasicEngineeringSkill), 3)] public sealed class PassengerCarRecipe : RollingStockRecipe<PassengerCarItem> { }
-[RequiresSkill(typeof(BasicEngineeringSkill), 3)] public sealed class CoalTenderRecipe : RollingStockRecipe<CoalTenderItem> { }
-[RequiresSkill(typeof(MechanicsSkill), 5)] public sealed class LargeTrainEngineRecipe : RollingStockRecipe<LargeTrainEngineItem> { }
-[RequiresSkill(typeof(MechanicsSkill), 4)] public sealed class LargeCargoCarRecipe : RollingStockRecipe<LargeCargoCarItem> { }
-[RequiresSkill(typeof(MechanicsSkill), 4)] public sealed class LargePassengerCarRecipe : RollingStockRecipe<LargePassengerCarItem> { }
-[RequiresSkill(typeof(MechanicsSkill), 4)] public sealed class LargeCoalTenderRecipe : RollingStockRecipe<LargeCoalTenderItem> { }

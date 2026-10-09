@@ -1,5 +1,20 @@
 # Client bundle workspace
 
+## Current release export
+
+Version 0.2.67 ships fourteen original vehicle designs, including the complete
+animated coaster guardrails. Use `MinecartAssetBuilder.BuildOriginalVehiclesBundle`
+with the matching authored Unity project. It preserves native rig components,
+removes deferred vehicle-model dependencies and evaluates boarding/secured
+animation through the existing replicated station states. General modern-model
+exports are not the originals-only release path.
+
+The generated Unity project and preserved deferred model library are outside
+this repository. The `models` directory contains the repository's original
+model sources. `prefab-contract.json` describes the initial prototype subset,
+not the full current vehicle/track inventory. Exported asset checks remain
+separate from connected-player rendering and multiplayer acceptance.
+
 Public mod name: **Railworks Workshop**. Version 0.2.30+ distributes the
 unchanged authored bundle bytes as **Railworks.unity3d**, paired with
 **Railworks.dll**. Authoring output, prefab names and internal bundle identity
@@ -12,11 +27,11 @@ import.
 
 Verified dependency:
 
-- Eco ModKit archive: `C:\Users\Administrator\Downloads\EcoModKit_v0.14.1.1-beta.zip`
-- Extracted package: `../.tools/EcoModKit-0.14.1.1-beta/EcoModKit.unitypackage`
+- Compatible Eco ModKit archive: `EcoModKit_v0.14.1.1-beta.zip`
+- Import its `EcoModKit.unitypackage` into the authoring project.
 - Required editor: Unity `6000.3.6f1`
 
-Remaining prerequisites:
+Initial prototype setup (historical):
 
 1. Install Unity 6.3 compatible with the package's `ProjectVersion.txt` (`6000.3.6f1` for the
    inspected client).

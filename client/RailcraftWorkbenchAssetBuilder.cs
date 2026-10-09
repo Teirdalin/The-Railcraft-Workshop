@@ -143,7 +143,13 @@ namespace EcoMinecarts.Editor
             foreach(var part in new[]{"Vise base","Vise jaw","Measuring rule","Mallet head","Mortised end stretcher","Rail stock head","Press screw thread"})
                 if(!bench.GetComponentsInChildren<Transform>().Any(t=>t.name==part))throw new Exception("Workbench tooling missing: "+part);
             var renderers=prefab.GetComponentsInChildren<MeshRenderer>();
-            if(renderers.Length>8||renderers.Length<5)throw new Exception("Workbench static batching did not preserve the expected material groups");
+            var imported=prefab.transform.Find("Meshy workbench-fixed")!=null;
+            if(imported){
+                if(renderers.Count(r=>r.enabled)!=2||press.Find("Meshy workbench-ram")==null)
+                    throw new Exception("Imported workbench must retain separate fixed art and moving ram");
+                if(prefab.GetComponentsInChildren<Transform>().Where(t=>t.name.StartsWith("Meshy ")).Any(t=>t.GetComponent<Collider>()!=null))
+                    throw new Exception("Imported workbench art changed collision");
+            }else if(renderers.Length>8||renderers.Length<5)throw new Exception("Workbench static batching did not preserve the expected material groups");
             if(prefab.GetComponentsInChildren<Collider>().Any(c=>c.transform.name.StartsWith("Rule ")||c.transform.name.Contains("rivet")||c.transform.name.Contains("thread")))
                 throw new Exception("Decorative workbench tooling should not obstruct interactions");
             var instance=Object.Instantiate(prefab);try{

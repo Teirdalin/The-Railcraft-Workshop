@@ -83,7 +83,7 @@ public sealed partial class TrainStationComponent : WorldObjectComponent, IPersi
     [SyncToView, Autogen, PropReadOnly] public string CargoCars => string.IsNullOrWhiteSpace(SelectedCarIds)
         ? "All cargo cars" : SelectedCarIds.Split(',',StringSplitOptions.RemoveEmptyEntries).Any(id=>!Guid.TryParse(id,out _))
         ? "Reselect cargo cars after update" : $"{SelectedCarIds.Split(',',StringSplitOptions.RemoveEmptyEntries).Length} selected cars";
-    [RPC, Autogen] public void SelectCargoCars(Player player) {
+    [RPC, Autogen, UITypeName("BigButton")] public void SelectCargoCars(Player player) {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SelectCargoCars", this.Parent); _ = SelectCargoCarsAsync(player); }
     private async Task SelectCargoCarsAsync(Player player)
     {
@@ -172,8 +172,8 @@ public sealed partial class TrainStationComponent : WorldObjectComponent, IPersi
     private bool CanConfigure(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/CanConfigure", this.Parent); return player != null && Parent != null && !Parent.IsDestroyed && Parent.IsAuthorized(player.User, AccessType.FullAccess)
         && Vector3.Distance(player.User.Position, Parent.Position) <= 6; }
     private void SettingsChanged() {
-        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SettingsChanged", this.Parent); settingsRevision++; this.Changed(nameof(Conditions)); this.Changed(nameof(Comparison)); this.Changed(nameof(CargoCars)); this.Changed(nameof(ConditionalDestinations)); Parent.SetDirty(); }
-    [RPC, Autogen] public void CopySettings(Player player)
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/SettingsChanged", this.Parent); settingsRevision++; this.Changed(nameof(Conditions)); this.Changed(nameof(Comparison)); this.Changed(nameof(CargoCars)); this.Changed(nameof(DestinationRulesSummary)); Parent.SetDirty(); }
+    [RPC, Autogen, UITypeName("BigButton")] public void CopySettings(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/CopySettings", this.Parent);
         if (!CanConfigure(player)) return;
@@ -182,7 +182,7 @@ public sealed partial class TrainStationComponent : WorldObjectComponent, IPersi
         lock(clipboard) clipboard.Data = snapshot.Copy();
         SettingsAction = "Departure settings copied"; this.Changed(nameof(SettingsAction));
     }
-    [RPC, Autogen] public void PasteSettings(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void PasteSettings(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/PasteSettings", this.Parent);
         if (!CanConfigure(player)) return;
@@ -209,7 +209,7 @@ public sealed partial class TrainStationComponent : WorldObjectComponent, IPersi
     [RPC] public void EditCondition(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/EditCondition", this.Parent); EditDepartureConditions(player); }
-    [RPC, Autogen] public void EditDepartureConditions(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void EditDepartureConditions(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/EditDepartureConditions", this.Parent);
         if(!CanConfigure(player)) return;
@@ -269,6 +269,10 @@ public sealed partial class TrainStationComponent : WorldObjectComponent, IPersi
     internal static TrainStationComponent? Find(int id) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Find"); return Stations.TryGetValue(id, out var station) && !station.Parent.IsDestroyed ? station : null; }
     internal static TrainStationComponent[] At(RailCell cell) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/At"); return TrackStations.GetValueOrDefault(cell,[]); }
     internal bool HasDepartureConditions {get {lock(settingsGate) return expression!=null || Rules.Count>0;}}
+    internal bool ReadyToDepart(RailCouplingComponent train,double elapsed,bool defaultReady=false)
+        =>HasDepartureConditions?Ready(train,elapsed):defaultReady;
+    internal void NotifyVehicle(Eco.Minecarts.Track.RailEvent action,Guid vehicle)
+        =>Parent.GetComponent<RailAutomationComponent>()?.Emit(action,vehicle);
     internal bool Ready(RailCouplingComponent train, double elapsed)
     {
         var context=DepartureContext(train,elapsed);

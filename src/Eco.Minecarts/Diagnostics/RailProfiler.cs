@@ -179,5 +179,11 @@ public sealed class ProfileSnapshot
     public long? WireBytes { get; set; }
     public double? ServerCpuPercent { get; set; }
     public long? ServerResidentBytes { get; set; }
+    public double? ServerGcPauseMsTotal { get; set; }
+    public string? ServerModVersion {get;set;}
+    public double? ServerGcPauseMsSinceLastPoll { get; set; }
+    public double? ServerGcPeakPollPauseMs { get; set; }
+    public int[]? ServerGcCollectionsSinceLastPoll { get; set; }
+    public long? ServerThreadPoolPending { get; set; }
     public string Error { get; set; } = "";
 }

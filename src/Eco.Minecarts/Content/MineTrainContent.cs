@@ -69,6 +69,10 @@ public sealed class MineTrainRecipe : MinecartRailRecipeFamily
 [RequireComponent(typeof(RailConditionComponent))]
 public sealed class MineTrainObject : RailVehicleObject, IRepresentsItem
 {
+    public static Eco.Minecarts.Physics.RailVehicleSpec DefaultSpecification {get;} = new("MineTrain", "Mine Train", 600, 250, 4, 1.86f, .82f, .5f, 30, 12000, 5500, 6000, 8000, Model: "Engine");
+    public override Eco.Minecarts.Runtime.RailVehicleCapabilities Capabilities => Eco.Minecarts.Runtime.RailVehicleCapabilities.FueledMotor | Eco.Minecarts.Runtime.RailVehicleCapabilities.StationRouting;
+    public override RailFuelConfiguration FuelConfiguration=>new(2,["Burnable Fuel"]);
+
     public override Eco.Minecarts.Physics.RailVehicleSpec RailSpec => Eco.Minecarts.Physics.RailVehicleSpec.MineTrain;
     public override float CouplerOffset => .93f;
     public override double RailMassKg => this.RailSpec.EmptyKg;
@@ -86,9 +90,7 @@ public sealed class MineTrainObject : RailVehicleObject, IRepresentsItem
         base.Initialize();
         this.GetComponent<CustomTextComponent>().Initialize(200);
         // Same native fuel/storage/pollution contracts as the installed PoweredCart.
-        this.GetComponent<FuelSupplyComponent>().Initialize(2, ["Burnable Fuel"]);
-        this.GetComponent<FuelConsumptionComponent>().Initialize(Eco.Minecarts.Physics.RailEconomy.FuelWatts(this.RailSpec));
-        this.GetComponent<AirPollutionComponent>().Initialize(.1f);
+        RailFuelSystem.Initialize(this);
         this.GetComponent<StockpileComponent>().Initialize(new Vector3i(1, 1, 1));
         Eco.Minecarts.Physics.RailVehicleBalances.InitializeStorage(this.GetComponent<PublicStorageComponent>(),this.RailSpec);
         this.GetComponent<MinimapComponent>().InitAsMovable();

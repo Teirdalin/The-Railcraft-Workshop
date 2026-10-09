@@ -26,19 +26,19 @@ public sealed class TramStopComponent : WorldObjectComponent
     [SyncToView,Autogen,PropReadOnly] public string Status=>stopEnabled?"Serving trams":"Closed";
     private bool CanConfigure(Player player){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/CanConfigure", this.Parent); return player!=null&&!Parent.IsDestroyed&&Parent.IsAuthorized(player.User,AccessType.FullAccess)
         &&Vector3.Distance(player.User.Position,Parent.Position)<=5; }
-    [RPC,Autogen] public void ToggleStop(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void ToggleStop(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/ToggleStop", this.Parent);if(!CanConfigure(player))return;stopEnabled=!stopEnabled;Publish();}
-    [RPC,Autogen] public void IncreaseDwell(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void IncreaseDwell(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/IncreaseDwell", this.Parent);if(!CanConfigure(player))return;dwellSeconds=Math.Min(600,dwellSeconds+5);Publish();}
-    [RPC,Autogen] public void DecreaseDwell(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void DecreaseDwell(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/DecreaseDwell", this.Parent);if(!CanConfigure(player))return;dwellSeconds=Math.Max(0,dwellSeconds-5);Publish();}
-    [RPC,Autogen] public void CycleDirection(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void CycleDirection(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/CycleDirection", this.Parent);if(!CanConfigure(player))return;direction=(TramStopDirection)(((int)direction+1)%3);Publish();}
-    [RPC,Autogen] public void RenameStop(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void RenameStop(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/RenameStop", this.Parent);if(CanConfigure(player))_=EditName(player);}
     private async Task EditName(Player player)
@@ -47,7 +47,7 @@ public sealed class TramStopComponent : WorldObjectComponent
         if(!CanConfigure(player)||string.IsNullOrWhiteSpace(text)||text.Length>60)return;
         stopName=text.Trim();Publish();
     }
-    [RPC,Autogen] public void SetServedLines(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void SetServedLines(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Drive updates/SetServedLines", this.Parent);if(CanConfigure(player))_=EditLines(player);}
     private async Task EditLines(Player player)

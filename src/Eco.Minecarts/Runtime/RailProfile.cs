@@ -43,6 +43,8 @@ public sealed class RailProfilerService : IModInit
     static readonly ConcurrentDictionary<int, long> Viewers = new();
     static double lastCpuSeconds;
     static long lastCpuTimestamp;
+    static double lastGcPauseMs,gcPeakPollPauseMs;
+    static int[]? lastGcCollections;
 
     public static void PostInitialize()
     {
@@ -90,6 +92,14 @@ public sealed class RailProfilerService : IModInit
                 censusStatus = "Voxel counts not scanned; Scan Counts runs one optional census.";
                 foreach (var obj in ServiceHolder<IWorldObjectManager>.Obj.All) if (!obj.IsDestroyed) Added(obj);
                 lastGeneration = RailProfiler.Generation;
+                gcPeakPollPauseMs=0;
+                // An eight-second lease can expire during the very pause being
+                // diagnosed. Preserve the previous poll baseline across that gap.
+                if(lastGcCollections==null)
+                {
+                    lastGcPauseMs=GC.GetTotalPauseDuration().TotalMilliseconds;
+                    lastGcCollections=Enumerable.Range(0,3).Select(GC.CollectionCount).ToArray();
+                }
             }
         }
         if (scanCounts && Interlocked.CompareExchange(ref scanning, 1, 0) == 0)
@@ -99,6 +109,7 @@ public sealed class RailProfilerService : IModInit
         }
         using var scope = RailProfiler.Measure("Profiler/Snapshot and transport");
         var result = RailProfiler.Snapshot();
+        result.ServerModVersion=typeof(RailProfile).Assembly.GetName().Version?.ToString();
         lock (Gate)
         {
             result.Counts = Objects.ToDictionary(p => p.Key, p => p.Value.Count);
@@ -113,6 +124,15 @@ public sealed class RailProfilerService : IModInit
                     result.ServerCpuPercent = Math.Clamp((cpu - lastCpuSeconds) / ((stamp - lastCpuTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency) / Environment.ProcessorCount * 100, 0, 100);
                 lastCpuTimestamp = stamp; lastCpuSeconds = cpu;
                 result.ServerResidentBytes = process.WorkingSet64;
+                var pause=GC.GetTotalPauseDuration().TotalMilliseconds;
+                var collections=Enumerable.Range(0,3).Select(GC.CollectionCount).ToArray();
+                result.ServerGcPauseMsTotal=pause;
+                result.ServerGcPauseMsSinceLastPoll=Math.Max(0,pause-lastGcPauseMs);
+                gcPeakPollPauseMs=Math.Max(gcPeakPollPauseMs,result.ServerGcPauseMsSinceLastPoll.Value);
+                result.ServerGcPeakPollPauseMs=gcPeakPollPauseMs;
+                result.ServerGcCollectionsSinceLastPoll=collections.Select((count,i)=>Math.Max(0,count-(lastGcCollections?[i]??count))).ToArray();
+                result.ServerThreadPoolPending=ThreadPool.PendingWorkItemCount;
+                lastGcPauseMs=pause;lastGcCollections=collections;
             }
             catch { /* Native process counters are optional context. */ }
         }

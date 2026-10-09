@@ -170,7 +170,7 @@ public sealed partial class TrainControllerComponent : WorldObjectComponent
     }
     [RPC] public void IncreaseTargetSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/IncreaseTargetSpeed", this.Parent); CommandTarget(player,targetSpeedKmH+5); }
     [RPC] public void DecreaseTargetSpeed(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/DecreaseTargetSpeed", this.Parent); CommandTarget(player,targetSpeedKmH-5); }
-    [RPC, Autogen] public void StartAutopilot(Player player)
+    [RPC, Autogen, UITypeName("BigButton")] public void StartAutopilot(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/StartAutopilot", this.Parent);
         if(!CanConfigure(player)) return;
@@ -183,8 +183,8 @@ public sealed partial class TrainControllerComponent : WorldObjectComponent
         if(throttleControlSelected) ApplyThrottleCommand(requestedThrottlePercent);
         else ApplyTargetCommand(targetSpeedSet || speedControlActive || targetSpeedKmH>0 ? targetSpeedKmH : MaximumTargetSpeed);
     }
-    [RPC, Autogen] public void PauseAndBrake(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/PauseAndBrake", this.Parent); PauseAutopilot(player); }
-    [RPC, Autogen] public void StopAndDisableAutopilot(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/StopAndDisableAutopilot", this.Parent); StopAutopilot(player); }
+    [RPC, Autogen, UITypeName("BigButton")] public void PauseAndBrake(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/PauseAndBrake", this.Parent); PauseAutopilot(player); }
+    [RPC, Autogen, UITypeName("BigButton")] public void StopAndDisableAutopilot(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Autopilot and stops/StopAndDisableAutopilot", this.Parent); StopAutopilot(player); }
     // Keep old RPC names usable by already-open views, but show only the clearer actions.
     [RPC] public void PauseAutopilot(Player player)
     {
@@ -331,14 +331,28 @@ public sealed partial class TrainControllerComponent : WorldObjectComponent
     }
 
     private double stationTravel=double.PositiveInfinity;
+    private bool speedLimitBraking;
+    private double belowLimitSeconds;
+    internal bool SpeedLimitBrake(double speed,double limit,double dt)
+    {
+        // Start safety braking immediately, then require a stable lower speed
+        // before releasing. Avoid alternating brake/throttle every solver step.
+        if(Math.Abs(speed)>limit){speedLimitBraking=true;belowLimitSeconds=0;}
+        else if(speedLimitBraking)
+        {
+            belowLimitSeconds=Math.Abs(speed)<=Math.Max(0,limit-.15)
+                ?belowLimitSeconds+Math.Clamp(dt,0,.1):0;
+            if(belowLimitSeconds>=.3){speedLimitBraking=false;belowLimitSeconds=0;}
+        }
+        return speedLimitBraking;
+    }
     private int stationTravelDirection;
     internal static bool ReadyToDepart(TrainStationComponent station,RailCouplingComponent train,double dwell,bool tram)
     {
         var stop=station.Parent.GetComponent<TramStopComponent>();
         // Station Departure is authoritative for all vehicles. A tram's old
         // timer is only a default for stops without configured departure rules.
-        if(station.HasDepartureConditions)return station.Ready(train,dwell);
-        return stop!=null ? stop.Ready(dwell) : tram && dwell>=15;
+        return station.ReadyToDepart(train,dwell,stop!=null?stop.Ready(dwell):tram&&dwell>=15);
     }
     internal double LimitStationTravel(double distance)=>distance*stationTravelDirection>0 && Math.Abs(distance)>stationTravel
         ? Math.CopySign(stationTravel,distance) : distance;
@@ -393,7 +407,7 @@ public sealed partial class TrainControllerComponent : WorldObjectComponent
                     motion.SetDriveCommands(motion.ServerThrottle,-motion.ServerDirection,false);
                     Reverse=motion.ServerDirection<0; this.Changed(nameof(Reverse)); Parent.SetDirty();
                 }
-                station?.Parent.GetComponent<RailAutomationComponent>()?.Emit(RailEvent.Dispatch,this.Parent.ObjectID);
+                station?.NotifyVehicle(RailEvent.Dispatch,this.Parent.ObjectID);
                 if(station!=null && (!arrivedAtDiversion || completingSchedule)) Parent.GetComponent<TramRouteComponent>()?.Departed(tramStop?.StopName??station.Parent.DisplayName.ToString());
                 if(arrivedAtDiversion && station!.Parent.ObjectID==conditionalDestination)FinishDiversion(station,rail,t,departureDirection,departureNose,coupling);
                 this.departedStation = this.stoppedStation; this.departedPosition = this.Parent.Position;
@@ -449,7 +463,7 @@ public sealed partial class TrainControllerComponent : WorldObjectComponent
             if (targetStation != null)
             {
                 this.stoppedStation = targetStation.Parent.ID; this.arrived = DateTime.UtcNow;
-                targetStation.Parent.GetComponent<RailAutomationComponent>()?.Emit(RailEvent.Arrive,this.Parent.ObjectID);
+                targetStation.NotifyVehicle(RailEvent.Arrive,this.Parent.ObjectID);
             }
             this.Status = canTurn ? "Turning around at buffer stop"
                 : targetStation == null ? "Stopped: track end or incompatible route" : "Arrived at station";
@@ -457,7 +471,7 @@ public sealed partial class TrainControllerComponent : WorldObjectComponent
         }
         limit = Math.Min(limit, Math.Sqrt(2 * deceleration * Math.Max(0, obstacle - .08)));
         if(active && speedControlActive) limit=Math.Min(limit,targetSpeedKmH/3.6+.15);
-        if (Math.Abs(speed) > limit || speed * direction < -.05) { this.Status = "Braking"; return (0, true); }
+        if (SpeedLimitBrake(speed,limit,dt) || speed * direction < -.05) { this.Status = "Braking"; return (0, true); }
         if (this.Parent.GetComponent<RailConditionComponent>()?.ConditionPercent <= 0) { this.Status = "Repair required"; return (0, true); }
         var stationApproach=active && coupling.Vehicle.RailSpec.Tram && targetStation!=null;
         var approachLimit=stationApproach?Math.Min(limit,TramStationBraking.ApproachSpeed(obstacle,deceleration)):limit;

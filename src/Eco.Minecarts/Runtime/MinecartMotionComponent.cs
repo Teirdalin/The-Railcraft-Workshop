@@ -19,8 +19,47 @@ using Eco.Shared.Items;
 namespace Eco.Minecarts.Runtime;
 
 [Serialized, NoIcon, LocDisplayName("Rail Motion")]
-public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars, IPickupConfirmationComponent
+public sealed partial class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars, IPickupConfirmationComponent
 {
+    [Serialized] public Guid CoasterHomeStation { get; set; }
+    [Serialized] public long CoasterDepartureOrder { get; set; }
+    [Serialized] public int CoasterRecoveryFacing {get;set;}=1;
+    internal void RecoverAtStation(VoxelRail rail, float parameter, int orientation)
+    {
+        lock(this.gate)
+        {
+            this.Derailed=false;
+            this.ResetCoupledMotion();
+            Interlocked.Exchange(ref this.pendingCoupledPose,null);
+            this.coupledLandedEpoch=Volatile.Read(ref this.coupledAirborneEpoch);
+            this.loadedMomentum=null;this.resumeMomentumPending=false;
+            this.placementSnapPending=false;
+            this.flightVelocity=this.freeFollowerTrajectory=Vector3.Zero;
+            this.freeFollowerPose=false;
+            this.parkedOffRail=false;
+            this.pulledRail=null;
+            this.nextMotionRetry=default;
+            this.CommandBrake=true;
+            this.AcceptCoupledPose(rail,parameter,orientation,Vector3.Zero);
+            this.ArmStationQueue();
+            this.Parent.SyncPositionAndRotation();
+            this.Parent.SetDirty();
+        }
+    }
+    internal static bool WithRecoveryLocks(IEnumerable<MinecartMotionComponent> members,Func<bool> action)
+    {
+        var acquired=new List<object>();
+        try
+        {
+            foreach(var motion in members.OrderBy(m=>m.Parent.ID))
+            {
+                if(!Monitor.TryEnter(motion.gate))return false;
+                acquired.Add(motion.gate);
+            }
+            return action();
+        }
+        finally{foreach(var memberGate in acquired.AsEnumerable().Reverse())Monitor.Exit(memberGate);}
+    }
     private bool handbrake;
     [Serialized] public bool Handbrake
     {
@@ -42,7 +81,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
     internal bool ServerDriving => this.serverDriving;
     internal double ServerThrottle => this.serverThrottle;
     internal int ServerDirection => this.serverDirection;
-    internal Vector3 CurrentRailVelocity=>this.current is {} rail?rail.Profile.Tangent(this.t)*(float)this.state.Speed:this.nativeVelocity;
+    internal Vector3 CurrentRailVelocity=>ManualCart is {} manual?manual.Velocity:this.inFlight?this.flightVelocity:this.freeFollowerPose?this.freeFollowerTrajectory:this.current is {} rail?rail.Profile.Tangent(this.t)*(float)this.state.Speed:this.nativeVelocity;
     [Serialized] public bool Derailed { get; set; }
     private readonly object gate = new();
     // Tracks constrain the cart. Curve overload must not disable automated routes.
@@ -64,6 +103,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
     private double guidedSpeed;
     internal (VoxelRail Rail, int End)? NextRail(VoxelRail rail, int end)
     {
+        if(ManualCart is {} manual)return manual.Next(rail,end);
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/NextRail", this.Parent);
         var control = this.Parent.GetComponent<RailCouplingComponent>()?.Leader().Parent.GetComponent<TrainControllerComponent>();
         var next=control?.Active == true ? control.Next(rail, end) : TrackWorld.NeighborForVehicle(rail, end);
@@ -103,7 +143,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             // Compact carts retain rail guidance when held OR freely coasting.
             // Walking-speed corner forces must not detach flanged minecarts.
             if (!performance.ExceedsCurveLimit(speed, rail.Profile.Curvature,
-                this.RailVehicle.RailSpec.Pullable || this.RailVehicle.RailSpec.Coaster)) return true;
+                this.RailVehicle.RailSpec.Pullable || this.RailVehicle.RailSpec.HumanPowered || this.RailVehicle.RailSpec.Coaster)) return true;
         }
         Eco.Shared.Logging.Log.WriteWarningLineLoc($"RAIL_GUIDANCE_LOST: object={Parent.ID}; rail={rail.Cell}; speed={speed:0.00}; supported={supported}; industrial={rail.Profile.Industrial}; coaster={rail.Profile.Coaster}; radius={rail.Profile.Radius:0.00}");
         this.Derailed = true;
@@ -144,6 +184,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
     // Transient presentation offset: rail position and momentum remain authoritative.
     // Decay relative to the live rail frame so bends/banks keep moving during landing.
     private Quaternion landingRotationOffset = Quaternion.Identity;
+    private Vector3 landingPivot;
     private double landingRotationElapsed = .45;
     private bool LandingRotationActive => this.landingRotationElapsed < .45;
     private void BeginLandingRotation(VoxelRail rail, float parameter, Vector3 forward)
@@ -152,6 +193,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         var frame = this.RailRotation(rail, parameter, forward);
         var target = new Quaternion(frame.x, frame.y, frame.z, frame.w);
         this.landingRotationOffset = Quaternion.Normalize(this.Rotation * Quaternion.Inverse(target));
+        this.landingPivot=Vector3.Zero;
         this.landingRotationElapsed = 0;
     }
     private void AdvanceLandingRotation(double seconds)
@@ -169,7 +211,24 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         var result = Quaternion.Normalize(offset * new Quaternion(frame.x, frame.y, frame.z, frame.w));
         return new(result.X, result.Y, result.Z, result.W);
     }
-    internal RailCell? BoundRailCell=>this.current?.Cell;
+    private Vector3 LandingPosition(Vector3 point, VoxelRail rail, float parameter, Vector3 forward, Eco.Shared.Math.Quaternion rotation)
+    {
+        if (!this.LandingRotationActive) return point;
+        return this.RailSupportPosition(point,rail,parameter,forward,rotation,this.landingPivot);
+    }
+    private Vector3 RailSupportPosition(Vector3 point,VoxelRail rail,float parameter,Vector3 forward,Eco.Shared.Math.Quaternion rotation,Vector3 pivot)
+    {
+        var guided=this.RailRotation(rail,parameter,forward);
+        // While the incoming body pitch is being retained, its lowest wheel
+        // must stay above its normal contact plane. Settle each car on its own
+        // running gear instead of rotating a rail-height centre into the rail.
+        var lift=AirMotion.LandingClearance(new(rotation.x,rotation.y,rotation.z,rotation.w),
+            new(guided.x,guided.y,guided.z,guided.w),rail.Profile.Up(parameter),
+            this.RailVehicle.RailSpec.Wheelbase/2,this.RailVehicle.ContactHalfSize.X);
+        var offset=guided.RotateVector(pivot)-rotation.RotateVector(pivot);
+        return point+offset+rail.Profile.Up(parameter)*Math.Max(0,lift-Vector3.Dot(offset,rail.Profile.Up(parameter)));
+    }
+    internal RailCell? BoundRailCell=>ManualCart is {} manual?manual.State?.Rail.Cell:this.current?.Cell;
     internal Eco.Shared.Math.Quaternion RailRotation(VoxelRail rail,float parameter,Vector3 forward)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Orientation/RailRotation", this.Parent);
@@ -229,6 +288,12 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         authRequired: AccessType.FullAccess, flags: InteractionFlags.BlocksOtherInteraction)]
     public void Shove(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
+        if(ManualCart is {} manual)
+        {
+            lock(gate){if(!motionStopped&&!pickupPending&&!Parent.IsDestroyed&&target.ContainsParameter("MinecartHandle")
+                &&Parent.IsAuthorized(player.User,AccessType.FullAccess)&&Vector3.Distance(player.User.Position,Parent.Position)<=3)manual.Shove(player);}
+            return;
+        }
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/Shove", this.Parent);
         lock (this.gate)
         {
@@ -296,6 +361,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
                 touchedCart.Parent.Rotation.RotateVector(Vector3.UnitZ))*relativeFacing*this.facing;
             var mass=Math.Max(1,this.Parent.GetComponent<RailCouplingComponent>().Performance.Mass);
             this.lastShoveAt=now;
+            this.coasterQueueFeed=false;
             this.WakeMotion();
             this.Handbrake=false;
             this.CommandBrake=false;
@@ -313,7 +379,9 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         if (player == null || player.MountManager.IsMounted || !this.IsShoveableTrain(player.User)
             || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess)) return;
         var coupling = this.Parent.GetComponent<RailCouplingComponent>();
-        coupling.Leader().Parent.GetComponent<MinecartMotionComponent>().ApplyTrainShove(player, coupling);
+        var leader=coupling.Leader().Parent.GetComponent<MinecartMotionComponent>();
+        if(leader.ManualCart!=null)leader.QueueManualShove(player,coupling);
+        else leader.ApplyTrainShove(player,coupling);
     }
 
     private void ApplyTrainShove(Player player, RailCouplingComponent touchedCar)
@@ -370,6 +438,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
     private double nativePacketSeconds = .05;
     internal void OnNativePhysicsPose(Vector3 velocity, double packetSeconds = .05)
     {
+        if(ManualCart!=null)return;
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/OnNativePhysicsPose", this.Parent);
         lock (this.gate)
         {
@@ -394,12 +463,13 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal bool SnapPlacedCart()
     {
+        if(ManualCart is {} manual){lock(gate)return manual.Bind(true);}
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/SnapPlacedCart", this.Parent);
         lock (this.gate)
         {
             var nearest = TrackWorld.Capture(this.Parent.Position,
                 this.Parent.Rotation.RotateVector(Vector3.UnitZ), this.RailVehicle.RailSpec.Coaster?.5f:.45f,
-                this.RailVehicle.RailSpec.Coaster?1.05f:.6f, this.RailVehicle.RailSpec.Industrial, coaster: this.RailVehicle.RailSpec.Coaster);
+                this.RailVehicle.RailSpec.Coaster?1.5f:1.1f, this.RailVehicle.RailSpec.Industrial, coaster: this.RailVehicle.RailSpec.Coaster);
             if (nearest == null) return false;
             this.AlignToRail(nearest.Value.Rail, nearest.Value.T);
             return true;
@@ -408,6 +478,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal void GuideNativePullPose()
     {
+        if(ManualCart!=null)return;
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/GuideNativePullPose", this.Parent);
         lock (this.gate)
         {
@@ -419,6 +490,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal bool GuidePulledRail()
     {
+        if(ManualCart is {} manual)return manual.Bind(false);
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/GuidePulledRail", this.Parent);
         lock (this.gate)
         {
@@ -507,6 +579,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal bool ReleaseRailMotion()
     {
+        if(ManualCart is {} manual){lock(gate){manual.ReleaseHandle();return manual.Bind(false);}}
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/ReleaseRailMotion", this.Parent);
         lock (this.gate)
         {
@@ -543,6 +616,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal void ResetCoupledMotion()
     {
+        if(ManualCart is {} manual){lock(gate){Handbrake=true;manual.Stop();}return;}
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/ResetCoupledMotion", this.Parent);
         lock (this.gate)
         {
@@ -556,13 +630,105 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         }
     }
 
-    internal void AcceptCoupledPose(VoxelRail rail, float parameter, int orientation, Vector3 velocity)
+    // Coupling can change after two independent timers already entered their
+    // motion gates. Never wait for a second vehicle gate while holding the
+    // leader's: publish the latest pose for its next own callback instead.
+    private sealed record CoupledPoseRequest(long Sequence,long Topology,VoxelRail? Rail,float Parameter,int Orientation,Vector3 Position,Vector3 Forward,Vector3 Velocity,int Leader=0,Vector3 Pivot=default,long AirborneEpoch=0,bool GroundedLeader=false,bool Trajectory=false,Vector3 SupportForward=default);
+    private CoupledPoseRequest? pendingCoupledPose;
+    private long coupledPoseSequence,lastAppliedCoupledPose;
+    // The mailbox coalesces poses, but must retain the airborne transition even
+    // if a busy follower consumes only the newer guided touchdown pose.
+    private long coupledAirborneEpoch,coupledLandedEpoch;
+    private Vector3 freeFollowerTrajectory;
+    internal bool AwaitingCoupledLanding => this.RailVehicle.RailSpec.Coaster && (this.freeFollowerPose || this.inFlight
+        || Volatile.Read(ref coupledAirborneEpoch)>Volatile.Read(ref coupledLandedEpoch));
+    internal bool CanLandCoupledAt(VoxelRail rail, float parameter, Vector3 position, int connectedEnd)
     {
+        var point = this.RailPosition(rail, parameter, this.NextRail);
+        var up = rail.Profile.Up(parameter);
+        var forward=this.RailTangent(rail,parameter,this.NextRail);
+        if(Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ),forward)<0)forward=-forward;
+        point=this.RailSupportPosition(point,rail,parameter,forward,this.Parent.Rotation,this.RailVehicle.ConnectionPoints.Coupler(connectedEnd));
+        var offset = position - point;
+        // The path cursor identifies where this car belongs along the train,
+        // but only its own descending body can establish rail contact there.
+        var height = Vector3.Dot(offset, up);
+        var lateral = offset - up * height;
+        // A child ahead of a grounded rear solver can already penetrate the
+        // plane through its tilted coupler. Recover that bounded penetration
+        // immediately; a spherical gate used to reject it until the rear car
+        // finished turning. Cars above the plane still wait for own contact.
+        return height <= .08f && height >= -this.RailVehicle.RailSpec.Length
+            && lateral.LengthSquared() <= .65f * .65f
+            && (Vector3.Dot(this.freeFollowerTrajectory,up)<=0 || Vector3.Dot(position - this.Parent.Position, up) <= .01f);
+    }
+    internal void AcceptCoupledPose(VoxelRail rail, float parameter, int orientation, Vector3 velocity)
+        =>ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,rail,parameter,orientation,default,default,velocity));
+    internal void AcceptCoupledFreePose(Vector3 position, Vector3 forward, Vector3 velocity)
+        =>ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,null,0,0,position,forward,velocity,AirborneEpoch:Interlocked.Increment(ref coupledAirborneEpoch)));
+    internal void AcceptFollowerPose(int leader,VoxelRail rail,float parameter,int orientation,Vector3 velocity)
+        =>ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,rail,parameter,orientation,default,default,velocity,leader,AirborneEpoch:Volatile.Read(ref coupledAirborneEpoch)));
+    internal void AcceptContactFollowerPose(int leader,VoxelRail rail,float parameter,int orientation,Vector3 velocity,int connectedEnd)
+        =>ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,rail,parameter,orientation,default,default,velocity,leader,this.RailVehicle.ConnectionPoints.Coupler(connectedEnd),Volatile.Read(ref coupledAirborneEpoch)));
+    internal void AcceptFreeFollowerPose(int leader,Vector3 position,Vector3 forward,Vector3 velocity,int connectedEnd)
+        =>ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,null,0,0,position,forward,velocity,leader,this.RailVehicle.ConnectionPoints.Coupler(connectedEnd),Interlocked.Increment(ref coupledAirborneEpoch)));
+    internal void AcceptLandingFollowerPose(int leader,Vector3 position,Vector3 forward,Vector3 velocity,int connectedEnd)
+        =>ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,null,0,0,position,forward,velocity,leader,this.RailVehicle.ConnectionPoints.Coupler(connectedEnd),Interlocked.Increment(ref coupledAirborneEpoch),true));
+    internal Vector3 TrajectoryContactPoint(RailMotionTrail.Pose pose,int bodyTravelSign)
+    {
+        if(pose.Rail is not {} rail)return pose.Point;
+        var tangent=this.RailTangent(rail,pose.Parameter,this.NextRail);
+        var travelSign=Vector3.Dot(pose.Velocity,tangent)<0?-1:1;
+        var point=this.RailPosition(rail,pose.Parameter,this.NextRail);
+        if(this.current!=null && !this.LandingRotationActive && !this.AwaitingCoupledLanding)return point;
+        return RailSupportPosition(point,rail,pose.Parameter,
+            tangent*travelSign*bodyTravelSign,this.Parent.Rotation,Vector3.Zero);
+    }
+    internal void AcceptTrajectoryFollowerPose(int leader,RailMotionTrail.Pose pose,int bodyTravelSign,int connectedEnd,int travelDirection=0,bool constrained=false,Vector3 supportForward=default)
+    {
+        if(pose.Rail is {} rail)
+        {
+            var sign=travelDirection!=0?travelDirection:Vector3.Dot(pose.Velocity,rail.Profile.Tangent(pose.Parameter))<0?-1:1;
+            ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,
+                rail,pose.Parameter,sign*bodyTravelSign,default,default,pose.Velocity,leader,AirborneEpoch:Volatile.Read(ref coupledAirborneEpoch),Trajectory:true));
+        }
+        else
+        {
+            var forward=pose.Velocity.LengthSquared()>.0025f?Vector3.Normalize(pose.Velocity)*bodyTravelSign:Parent.Rotation.RotateVector(Vector3.UnitZ);
+            ReceiveCoupledPose(new(Interlocked.Increment(ref coupledPoseSequence),RailCouplingComponent.TopologyRevision,
+                null,0,0,pose.Point,forward,pose.Velocity,leader,constrained?this.RailVehicle.ConnectionPoints.Coupler(connectedEnd):Vector3.Zero,AirborneEpoch:Interlocked.Increment(ref coupledAirborneEpoch),Trajectory:true,SupportForward:supportForward));
+        }
+    }
+    private void ReceiveCoupledPose(CoupledPoseRequest request)
+    {
+        if(!Monitor.TryEnter(gate)){
+            CoupledPoseRequest? previous;
+            do{previous=Volatile.Read(ref pendingCoupledPose);if(previous?.Sequence>=request.Sequence)return;}
+            while(Interlocked.CompareExchange(ref pendingCoupledPose,request,previous)!=previous);
+            return;
+        }
+        try{ApplyCoupledPose(request);}finally{Monitor.Exit(gate);}
+    }
+    private void ApplyCoupledPose(CoupledPoseRequest request)
+    {
+        if(motionStopped||pickupPending||Parent.IsDestroyed||request.Sequence<=lastAppliedCoupledPose)return;
+        lastAppliedCoupledPose=request.Sequence;
+        if(request.Topology!=RailCouplingComponent.TopologyRevision)return;
+        if(request.Leader!=0&&Parent.GetComponent<RailCouplingComponent>().Leader().Parent.ID!=request.Leader)return;
+        if(request.Rail is {} rail)ApplyRailFollowerPose(rail,request.Parameter,request.Orientation,request.Velocity,request.AirborneEpoch,request.Pivot,request.Trajectory);
+        else ApplyFreeFollowerPose(request.Position,request.Forward,request.Velocity,request.Pivot,request.GroundedLeader,request.Trajectory,request.SupportForward);
+    }
+    private void ApplyRailFollowerPose(VoxelRail rail, float parameter, int orientation, Vector3 velocity, long airborneEpoch,Vector3 pivot,bool trajectory=false,Vector3 supportForward=default)
+    {
+        if(ManualCart is {} manual){lock(gate)manual.Accept(rail,parameter,orientation,velocity);return;}
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/AcceptCoupledPose", this.Parent);
         lock (this.gate)
         {
             if (this.Derailed || !this.CheckFootprint(rail, parameter, velocity.Length())) return;
-            var landing = this.freeFollowerPose || this.inFlight;
+            var unboundContact=trajectory && this.current==null && this.RailVehicle.RailSpec.Coaster
+                && Math.Abs(Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ),this.RailTangent(rail,parameter,this.NextRail)))<.998f;
+            var landing = unboundContact || this.freeFollowerPose || this.inFlight || airborneEpoch>this.coupledLandedEpoch;
+            Interlocked.Exchange(ref this.coupledLandedEpoch,Math.Max(this.coupledLandedEpoch,airborneEpoch));
             var now = DateTime.UtcNow;
             var seconds = Math.Clamp((now - this.lastFreeFollowerAt).TotalSeconds, 0, .15);
             this.current = rail; this.t = parameter; this.facing = orientation;
@@ -572,40 +738,57 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             this.state = new(0, Vector3.Dot(velocity, rail.Profile.Tangent(parameter)), 0);
             var point = this.RailPosition(rail, parameter, (r, e) => this.NextRail(r, e));
             var tangent = this.RailTangent(rail, parameter, (r, e) => this.NextRail(r, e));
-            if (landing) this.BeginLandingRotation(rail, parameter, tangent * orientation);
+            if (landing) { this.BeginLandingRotation(rail, parameter, tangent * orientation); this.landingPivot=pivot; }
             else this.AdvanceLandingRotation(seconds);
             this.lastFreeFollowerAt = now;
             ((RailVehicleObject)this.Parent).SetRailGuidance(true);
-            this.Parent.Position = point;
-            this.Parent.Rotation = this.GuidedRotation(rail,parameter,tangent * orientation);
+            var rotation=this.GuidedRotation(rail,parameter,tangent * orientation);
+            this.Parent.Position = this.LandingPosition(point,rail,parameter,tangent*orientation,rotation);
+            this.Parent.Rotation = rotation;
             ((RailVehicleObject)this.Parent).PublishRailPose(velocity);
+            this.Parent.GetComponent<RailCouplingComponent>().RecordMotion(rail,parameter,point,velocity);
+            if(!this.RailVehicle.RailSpec.Coaster)
+            {
+                var speed=rail.Profile.Chain?MinecartChainDriveObject.PoweredSpeedFor(rail.Cell):0;
+                this.chainSpeedMultiplier=speed>0?speed:1;this.chainLiftEngaged=speed>0;
+            }
             this.Sound(velocity.Length());
+            MinecartDumpRailComponent.TryUnload(rail.Cell,this.Parent);
         }
     }
 
-    internal void AcceptCoupledFreePose(Vector3 position, Vector3 forward, Vector3 velocity)
+    private void ApplyFreeFollowerPose(Vector3 position, Vector3 forward, Vector3 velocity, Vector3 pivot, bool groundedLeader, bool trajectory=false,Vector3 supportForward=default)
     {
+        if(ManualCart is {} manual){lock(gate){manual.Stop();}return;}
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/AcceptCoupledFreePose", this.Parent);
         lock (this.gate)
         {
             this.landingRotationElapsed = .45;
             this.current = null; this.pulledRail = null; this.nativeWasPulling = false;
-            var previous = this.Parent.Position;
             var now = DateTime.UtcNow;
             if (!this.freeFollowerPose)
                 this.flightFacingSign = Vector3.Dot(forward, velocity) < 0 ? -1 : 1;
             var seconds = this.freeFollowerPose ? Math.Clamp((now - this.lastFreeFollowerAt).TotalSeconds, 0, .15) : 0;
             this.freeFollowerPose = true;
             this.lastFreeFollowerAt = now;
-            var movement = position - previous;
-            var localTravel = movement.LengthSquared() is > .0004f and < 4f ? movement : velocity;
-            if (seconds > 0 && localTravel.LengthSquared() > .0025f)
+            // Once supported by a grounded parent's coupler, retain this car's
+            // incoming pitch. Coupler motion is not a new flight trajectory;
+            // rail alignment starts only at this car's own supported contact.
+            if(trajectory || !groundedLeader || seconds<=0)this.freeFollowerTrajectory=velocity;
+            var localTravel=this.freeFollowerTrajectory;
+            if ((trajectory || !groundedLeader) && seconds > 0 && (localTravel.LengthSquared() > .0025f || supportForward.LengthSquared()>.0025f))
             {
                 // Each off-rail follower turns toward its OWN travel at its own
                 // position. Copying the leader's rotation makes a long train a
                 // rigid plank over hills, curves and launch transitions.
-                var turned = AirMotion.FollowTrajectory(this.Rotation, localTravel, this.flightFacingSign, seconds);
+                var connector = this.Parent.Rotation.RotateVector(pivot);
+                var supported=supportForward.LengthSquared()>.0025f;
+                var turned = AirMotion.FollowTrajectory(this.Rotation, supported?supportForward:localTravel, supported?1:this.flightFacingSign, seconds);
                 this.Parent.Rotation = new Eco.Shared.Math.Quaternion(turned.X, turned.Y, turned.Z, turned.W);
+                // Rotate around the coupled end. Leaving the centre computed
+                // from the old angle creates a false vertical movement on the
+                // next tick, which can keep the car rocking above the rail.
+                position += connector - this.Parent.Rotation.RotateVector(pivot);
             }
             this.Parent.Position = position;
             ((RailVehicleObject)this.Parent).SetRailGuidance(true);
@@ -616,6 +799,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal bool CanRestoreCoupledPose(VoxelRail rail, float parameter)
     {
+        if(ManualCart is {} manual)return manual.CanRestore(rail,parameter);
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/CanRestoreCoupledPose", this.Parent);
         if (this.Derailed) return false;
         bool Compatible(VoxelRail at) => at.Profile.Industrial == this.RailVehicle.RailSpec.Industrial
@@ -677,13 +861,14 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         }
         var tolerance = pulling ? .03f : .008f;
         if (distance < tolerance && alignment > (pulling ? .999f : .99995f) && frameAligned) return;
-        this.Parent.Position = point;
-        this.Parent.Rotation = this.GuidedRotation(rail,railT,tangent);
+        var rotation=this.GuidedRotation(rail,railT,tangent);
+        this.Parent.Position = this.LandingPosition(point,rail,railT,tangent,rotation);
+        this.Parent.Rotation = rotation;
         this.Parent.SyncPositionAndRotation();
         ((RailVehicleObject)this.Parent).MarkPoseUpdated();
     }
 
-    internal (VoxelRail Rail,float T,int Facing)? BoundConsistPose => this.current is {} rail
+    internal (VoxelRail Rail,float T,int Facing)? BoundConsistPose => ManualCart is {} manual?manual.Bound:this.current is {} rail
         ? (rail,this.t,this.facing) : this.pulledRail is {} pulled
         ? (pulled,this.pulledT,Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ),pulled.Profile.Tangent(this.pulledT))<0?-1:1) : null;
 
@@ -691,6 +876,8 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/PostInitialize", this.Parent);
         base.PostInitialize();
+        ManualCart?.Initialize();
+        if (this.RailVehicle.RailSpec.Coaster && !WorldObjectManager.Init.Initialized) this.resumeMomentumPending = true;
         // A locomotive placed on bare ground has no rail to capture. Keep its
         // parked pose authoritative from the first client frame; otherwise a
         // WheelCollider/terrain contact can launch the local Rigidbody while
@@ -701,7 +888,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         // Only this component needs 20 Hz motion; do not retime the whole world.
         var mounts = this.Parent.GetComponent<MountComponent>();
         mounts.PlayerMountedEvent += this.WakeMotion;
-        mounts.PlayerDismountedEvent += this.WakeMotion;
+        mounts.PlayerDismountedEvent += this.DriverDismounted;
         this.motionTimer = new Timer(_ =>
         {
             try { if (this.Parent.Initialized && !this.Parent.IsDestroyed) this.Tick(); }
@@ -718,9 +905,10 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         lock (this.gate)
         {
             this.motionStopped = true;
+            ManualCart?.ReleaseHandle();
             var mounts = this.Parent.GetComponent<MountComponent>();
             mounts.PlayerMountedEvent -= this.WakeMotion;
-            mounts.PlayerDismountedEvent -= this.WakeMotion;
+            mounts.PlayerDismountedEvent -= this.DriverDismounted;
             this.motionTimer?.Dispose();
             this.motionTimer = null;
         }
@@ -792,6 +980,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             this.serverDirection=direction<0?-1:1;
             this.CommandBrake=brake;
             this.Handbrake=brake;
+            ((RailVehicleObject)Parent).PublishCabControls(this.serverThrottle,brake,this.serverDirection);
             Parent.SetDirty();
         }
     }
@@ -822,6 +1011,12 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         if (!((RailVehicleObject)this.Parent).RailSpec.Pullable || target.ContainsParameter("MinecartStorage") || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess) || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
         lock (this.gate)
         {
+            if(ManualCart is {} manual)
+            {
+                var local=Vector3.Transform(player.User.Position-Parent.Position,Quaternion.Inverse(Rotation));
+                if(!motionStopped&&!pickupPending)manual.ToggleHandle(player,ResolveGripSide(target,local));
+                return;
+            }
             var mounts = this.Parent.GetComponent<MountComponent>();
             if (mounts.Driver == player) { mounts.TryDismountPlayer(player); return; }
             if (player.MountManager.IsMounted) { return; }
@@ -905,6 +1100,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         lock (this.gate)
         {
             if (this.pickupPending) return;
+            ManualCart?.Stop();
             this.pickupPending = true;
             this.groundVelocity = Vector3.Zero;
             this.state = this.state with { Speed = 0 };
@@ -961,6 +1157,8 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         if (!this.Parent.IsAuthorized(player.User, AccessType.FullAccess) || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
         lock (this.gate)
         {
+            if(ManualCart!=null){Handbrake=!Handbrake;return;}
+            this.coasterQueueFeed=false;
             if(this.RailVehicle.RailSpec.Powered)
             {
                 this.EnsureDriveCommands();
@@ -991,10 +1189,14 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             }
         }
         if (this.current is { } old && (!TrackWorld.Contains(old) || this.RailVehicle.RailSpec.Tram && !old.Profile.Tram)) { this.current = null; this.state = default; }
-        if (this.current is { } bound && Vector3.Distance(this.Parent.Position, this.RailPosition(bound,this.t,this.NextRail)) > .65f)
+        if (this.current is { } bound && Vector3.Distance(this.Parent.Position,
+            this.LandingPosition(this.RailPosition(bound,this.t,this.NextRail),bound,this.t,
+                this.RailTangent(bound,this.t,this.NextRail)*this.facing,this.Parent.Rotation)) > .65f)
         { this.current = null; this.state = default; } // Lifted/moved externally: abandon the old rail lock.
         if (this.current != null) return true;
-        var nearest = TrackWorld.Capture(this.Parent.Position, this.Parent.Rotation.RotateVector(Vector3.UnitZ), industrial: this.RailVehicle.RailSpec.Industrial, coaster: this.RailVehicle.RailSpec.Coaster);
+        var nearest = this.inFlight && this.RailVehicle.RailSpec.Coaster
+            ? TrackWorld.CaptureContact(this.Parent.Position,this.Rotation,this.flightVelocity,this.RailVehicle.RailSpec.Wheelbase/2,this.RailVehicle.ContactHalfSize.X)
+            : TrackWorld.Capture(this.Parent.Position, this.Parent.Rotation.RotateVector(Vector3.UnitZ), industrial: this.RailVehicle.RailSpec.Industrial, coaster: this.RailVehicle.RailSpec.Coaster);
         if(this.RailVehicle.RailSpec.Tram && nearest is {} found && !found.Rail.Profile.Tram)nearest=null;
         if (nearest == null && this.RailVehicle.RailSpec.Wheelbase > 1)
         {
@@ -1039,6 +1241,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
 
     internal bool RecoverOnRail()
     {
+        if(ManualCart is {} manual){lock(gate){manual.Stop();return manual.Bind(true);}}
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/RecoverOnRail", this.Parent);
         lock (this.gate)
         {
@@ -1054,6 +1257,21 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         }
     }
 
+    private void DriverDismounted()
+    {
+        lock(this.gate)
+        {
+            // The next physics tick may retain coasting momentum, but no
+            // operator means no pump stroke. Do not leave a native speed latched.
+            if(this.RailVehicle.RailSpec.HumanPowered&&this.Parent.GetComponent<MountComponent>().Driver==null)
+            {
+                this.RailVehicle.PublishWheelMotion(Vector3.Zero);
+                this.Sound(0);
+            }
+            this.WakeMotion();
+        }
+    }
+
     private void WakeMotion()
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/WakeMotion", this.Parent);
@@ -1062,6 +1280,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             if (!this.sleepClock.Wake()) return;
             // Never integrate the idle interval as accumulated travel.
             this.lastTick = DateTime.UtcNow;
+            this.manualCart?.ResetClock();
             if (!this.motionStopped) this.motionTimer?.Change(0, RailMotionSleepClock.ActiveIntervalMs);
         }
     }
@@ -1100,11 +1319,29 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             using var _railProfileScope = RailProfile.Measure("Vehicle Simulation/Movement/Tick", this.Parent);
             using var frame = RailSimulationFrame.Begin();
             if (this.motionStopped || this.Parent.IsDestroyed || this.pickupPending) return;
+            if(Interlocked.Exchange(ref pendingCoupledPose,null) is {} followPose)ApplyCoupledPose(followPose);
+            if(ManualCart is {} manual)
+            {
+                var placement=placementSnapPending;placementSnapPending=false;
+                var timestamp=DateTime.UtcNow;
+                if(this.sleepClock.IsSleeping&&manual.CanSleep&&!placement)
+                {
+                    manual.Publish();manual.ResetClock();
+                    if(!this.sleepClock.NeedsProbe(timestamp))return;
+                }
+                manual.Tick(placement);
+                var previous=this.sleepClock.IsSleeping;
+                var sleepingManual=this.sleepClock.Observe(manual.CanSleep,timestamp);
+                if(previous!=sleepingManual)this.motionTimer?.Change(sleepingManual?RailMotionSleepClock.SleepingIntervalMs:RailMotionSleepClock.ActiveIntervalMs,
+                    sleepingManual?RailMotionSleepClock.SleepingIntervalMs:RailMotionSleepClock.ActiveIntervalMs);
+                return; // No legacy native pulling, train commands, stations or flight solver.
+            }
             var now = DateTime.UtcNow;
             var wasSleeping = this.sleepClock.IsSleeping;
             if (wasSleeping)
             {
                 if (this.Parent.Position != this.sleepingPosition || this.Parent.Rotation != this.sleepingRotation
+                    || this.QueueCanAdvance()
                     || this.Parent.GetComponent<MountComponent>().Driver != null
                     || this.Parent.GetComponent<MineTrainDrivingComponent>()?.HasStandingOperator == true
                     || this.Parent.GetComponent<TrainControllerComponent>()?.Autopilot == true)
@@ -1144,6 +1381,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         lock (this.gate)
         {
             if (this.motionStopped || this.Parent.IsDestroyed || this.pickupPending) return;
+            if(this.RailVehicle.RailSpec.Coaster && !WorldObjectManager.Init.Initialized) return;
             if(DateTime.UtcNow<this.nextMotionRetry) return;
             if(this.nextMotionRetry!=default)
             {
@@ -1151,6 +1389,13 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             }
             var coupling = this.Parent.GetComponent<RailCouplingComponent>();
             var isFollower = coupling?.IsFollower == true;
+            if(!isFollower && this.freeFollowerPose && this.RailVehicle.RailSpec.Coaster)
+            { this.flightVelocity=this.freeFollowerTrajectory;this.inFlight=true;this.freeFollowerPose=false; }
+            if (this.RailVehicle.RailSpec.Coaster && coupling != null && (this.resumeMomentumPending || coupling.AwaitingLoad))
+            {
+                this.ResumeConsistMomentum(coupling);
+                return;
+            }
             if (coupling is { AwaitingLoad: true })
             {
                 this.RailVehicle.SetRailGuidance(true);
@@ -1215,6 +1460,13 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
                     else if (sampleDt > .25)
                         this.nativeVelocity *= (float)Math.Exp(-dt / .15);
                 }
+                if(this.nativeVelocityAvailable&&(now-this.nativeSampleTime).TotalSeconds>.3)
+                {
+                    // Resting native bodies stop sending packets. Their final
+                    // moving packet must not keep the visual controller running.
+                    this.nativeVelocity*=(float)Math.Exp(-dt/.15);
+                    if(this.nativeVelocity.LengthSquared()<.000001f)this.nativeVelocity=Vector3.Zero;
+                }
                 this.nativeWasPulling = true;
                 this.current = null;
                 // Native packets arrive less often than this component's 20 Hz
@@ -1222,6 +1474,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
                 // so a sharp turn does not wait a whole network interval.
                 // Each accepted packet is guided once by OnNativePhysicsPose.
                 // Do not feed the corrected server pose back into native pulling between packets.
+                this.RailVehicle.PublishWheelMotion(this.nativeVelocity);
                 this.Sound(TrackWorld.Nearest(this.Parent.Position, .65f, this.RailVehicle.RailSpec.Industrial, coaster: this.RailVehicle.RailSpec.Coaster) != null ? this.nativeVelocity.Length() : 0);
                 return; // Native cart client owns motion while pulling.
             }
@@ -1283,8 +1536,9 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
                     // mounted native rigidbody pull the locomotive off the rail.
                     this.captureOffset = Vector3.Zero;
                     point = this.RailPosition(rail, this.t, (r, end) => this.NextRail(r, end));
-                    this.Parent.Position = point;
-                    this.Parent.Rotation = this.GuidedRotation(rail,this.t,tangent * this.facing);
+                    var rotation=this.GuidedRotation(rail,this.t,tangent * this.facing);
+                    this.Parent.Position = this.LandingPosition(point,rail,this.t,tangent*this.facing,rotation);
+                    this.Parent.Rotation = rotation;
                     this.RailVehicle.SetRailGuidance(true);
                     this.RailVehicle.PublishRailPose(velocity);
                     this.lastPublishedRailVelocity = velocity;
@@ -1294,8 +1548,9 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
                     this.Parent.Rotation.RotateVector(Vector3.UnitZ), tangent * this.facing,
                     this.lastPublishedRailVelocity, velocity))
                 {
-                    this.Parent.Position = point;
-                    this.Parent.Rotation = this.GuidedRotation(rail,this.t,tangent * this.facing);
+                    var rotation=this.GuidedRotation(rail,this.t,tangent * this.facing);
+                    this.Parent.Position = this.LandingPosition(point,rail,this.t,tangent*this.facing,rotation);
+                    this.Parent.Rotation = rotation;
                     // Normal physics keyframes are interpolated by SyncPhysics.
                     // ForcePosition RPCs are for explicit snaps, not 20 Hz motion.
                     ((RailVehicleObject)this.Parent).PublishRailPose(velocity);
@@ -1333,6 +1588,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         this.Parent.Rotation = new Eco.Shared.Math.Quaternion(rotation.X, rotation.Y, rotation.Z, rotation.W);
         this.Parent.SyncPositionAndRotation();
         ((RailVehicleObject)this.Parent).MarkPoseUpdated();
+        this.RailVehicle.PublishWheelMotion(this.groundVelocity);
         this.Sound(0);
         this.Parent.GetComponent<RailCouplingComponent>()?.FollowFree(this.groundVelocity);
     }
@@ -1366,6 +1622,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             ((RailVehicleObject)this.Parent).SetPhysicsController(null!);
             this.nativeGroundPhysics = true;
         }
+        this.RailVehicle.PublishWheelMotion(Vector3.Zero);
         this.Sound(0);
     }
 
@@ -1399,6 +1656,7 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         var position = this.Parent.Position;
         for (var i = 0; i < count && this.inFlight; i++)
         {
+            this.Parent.GetComponent<RailCouplingComponent>().RecordMotion(null,0,position,this.flightVelocity);
             var step = AirMotion.Step(position, this.flightVelocity, dt / count);
             var next = step.Position;
             this.flightVelocity = step.Velocity;
@@ -1435,7 +1693,10 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             // Gravity changes the velocity arc each substep. Pitch/roll the body
             // toward that arc at a bounded angular rate instead of retaining the
             // takeoff pose until landing or snapping to the new heading.
-            var turned = AirMotion.FollowTrajectory(this.Rotation, this.flightVelocity, this.flightFacingSign, dt);
+            var travel=this.flightVelocity;var orientation=this.flightFacingSign;
+            if(this.RailVehicle.RailSpec.Coaster && this.Parent.GetComponent<RailCouplingComponent>().GroundedCouplerDirection() is {} supported)
+            {travel=supported;orientation=1;}
+            var turned = AirMotion.FollowTrajectory(this.Rotation, travel, orientation, dt);
             this.Parent.Rotation = new Eco.Shared.Math.Quaternion(turned.X, turned.Y, turned.Z, turned.W);
         }
         if (this.current != null)
@@ -1452,58 +1713,51 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
             this.nativeGroundPhysics = true;
         }
         this.Sound(0);
-        this.Parent.GetComponent<RailCouplingComponent>()?.FollowFree(this.flightVelocity);
+        if(this.current is {} landed)
+            this.Parent.GetComponent<RailCouplingComponent>()?.FollowTrain(landed,this.t,this.facing,
+                this.RailTangent(landed,this.t,this.NextRail)*(float)this.state.Speed);
+        else this.Parent.GetComponent<RailCouplingComponent>()?.FollowFree(this.flightVelocity);
     }
 
+    private IRailForceDriver? motorDriver;
     private void Step(double dt, double cargo, float walkSpeed)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Movement/Step", this.Parent);
         var rail = this.current!.Value;
+        MinecartDumpRailComponent.TryUnload(rail.Cell,this.Parent);
+        this.Parent.GetComponent<RailCouplingComponent>().RecordMotion(rail,this.t,this.RailPosition(rail,this.t,this.NextRail),rail.Profile.Tangent(this.t)*(float)this.state.Speed);
         LimitSharpCoasterSpeed(rail);
         if (!this.CheckFootprint(rail, this.t, this.state.Speed)) return;
         var tangent = this.RailTangent(rail, this.t, (r, end) => this.NextRail(r, end));
         var consistGrade=this.Parent.GetComponent<RailCouplingComponent>().ConsistGrade(tangent.Y,this.facing);
-        var chain = rail.Profile.Chain ? MinecartChainDriveObject.LiftFor(rail.Cell, this.Parent.ID,this.RailVehicle.RailSpec.Coaster) : (Watts: 0d, Multiplier: 1f);
+        var chain = rail.Profile.Chain&&this.RailVehicle.RailSpec.Coaster ? MinecartChainDriveObject.LiftFor(rail.Cell, this.Parent.ID,true) : (Watts: 0d, Multiplier: 1f);
         this.chainSpeedMultiplier=chain.Multiplier;
         var lift = ChainLift.Force(Tuning.EmptyMassKg + cargo, tangent.Y, this.state.Speed, chain.Watts,
             ChainLift.TargetSpeed(chain.Multiplier, this.RailVehicle.RailSpec.Coaster));
+        {
+            // A coaster's trailing axle can still be on a powered lift after
+            // the leader passes its crest, just like any other coupled car.
+            var traction=this.Parent.GetComponent<RailCouplingComponent>().ChainTraction(rail,this.facing,this.state.Speed,consistGrade);
+            lift=traction.Force;this.chainSpeedMultiplier=traction.Multiplier;
+        }
         this.chainLiftEngaged = rail.Profile.Chain && lift > 0 && (tangent.Y > .001f || rail.Profile.BrakingChain);
         var chainBrake = rail.Profile.BrakingChain ? CoasterChainBrake.Force(Tuning.EmptyMassKg + cargo,
             this.state.Speed, chain.Watts > 0 ? ChainLift.TargetSpeed(chain.Multiplier,true) : 0) : 0;
-        var tramPower=this.RailVehicle.RailSpec.Tram && rail.Profile.Tram
-            ? TramCableDriveObject.PowerFor(rail.Cell,this.Parent.ID) : 0f;
-        var control = this.Parent.GetComponent<TrainControllerComponent>();
-        // Both controllers operate the same command state and safety envelope.
-        var input = control?.Control(rail,this.t,this.facing,this.state.Speed,dt)
-            ?? (Force:this.serverDriving ? this.Parent.GetComponent<RailCouplingComponent>().Performance.DriveForce(this.state.Speed,tangent.Y*this.serverDirection*this.facing)
-                * this.serverThrottle * this.serverDirection * this.facing : 0d, Brake:this.serverDriving && this.CommandBrake);
-        if(this.RailVehicle.RailSpec.Tram)
-            input=TramPowerRules.UsesCable(rail.Profile.Tram,tramPower) ? (input.Force*tramPower,input.Brake) : (0,true);
-        if ((this.serverDriving || control?.Active==true) && input.Force != 0
-            && !this.RailVehicle.RailSpec.Tram)
-        {
-            var fuel = this.Parent.GetComponent<FuelSupplyComponent>();
-            var joules = (float)(RailEconomy.FuelWatts(this.RailVehicle.RailSpec) * dt * this.serverThrottle);
-            if (fuel == null || fuel.ConsumeAsMuchAsPossible(joules) + .001f < joules)
-            {
-                this.Handbrake = true;
-                control?.ReportSafety("Out of fuel");
-                input = (0, true);
-            }
-            if(Parent.GetComponent<RailConditionComponent>()?.ConditionPercent<=0)
-            {
-                this.Handbrake=true; input=(0,true);
-            }
-        }
+        var control=this.Parent.GetComponent<TrainControllerComponent>();
+        var command=(this.motorDriver??=new RailMotorDriver(this.RailVehicle)).Request(
+            new(this,rail,this.t,this.facing,this.state.Speed,dt,tangent.Y));
+        var input=(Force:command.Force,Brake:command.Brake);
         if (this.serverDriving || control?.Active == true) this.Handbrake = input.Brake;
         if(this.RailVehicle.RailSpec.Coaster && CoasterStationComponent.At(rail.Cell) is {} station)
         {
+            this.coasterQueueFeed=false;
             input=station.Control(this.Parent.GetComponent<RailCouplingComponent>(),this.facing,this.state.Speed);
             this.Handbrake=input.Brake;
             this.coasterApproachBraking=false;
         }
         else if(this.RailVehicle.RailSpec.Coaster)
         {
+            if(this.QueueControl(out var queueInput)){input=queueInput;this.Handbrake=input.Brake;}
             var approaching=CoasterStationComponent.ApproachBrake(rail,this.t,this.state.Speed,this.Parent.GetComponent<RailCouplingComponent>());
             if(approaching||this.coasterApproachBraking)this.Handbrake=approaching;
             this.coasterApproachBraking=approaching;
@@ -1524,42 +1778,33 @@ public sealed class MinecartMotionComponent : WorldObjectComponent, IHasEnvVars,
         if (Math.Abs(limitedTravel - this.state.Distance) > .000001)
             this.state = this.state with { Speed = 0, Distance = limitedTravel };
         control?.RecordTrackTravel(this.state.Distance);
-        var distance = this.t * rail.Profile.Length + (float)this.state.Distance;
-        for (var crossed = 0; crossed < 8; crossed++)
+        var startSpeed=this.state.Speed;
+        var cursor=RailPathCursor.Travel(rail,this.t,this.state.Distance,this.NextRail,8,
+            (entered,orientation)=>this.CheckRail(entered,startSpeed*orientation));
+        if(!cursor.Valid)return;
+        this.state=this.state with{Speed=this.state.Speed*cursor.Orientation};
+        this.facing*=cursor.Orientation;
+        rail=cursor.Rail;
+        if(cursor.Remaining!=0)
         {
-            if (distance >= 0 && distance <= rail.Profile.Length) break;
-            var end = distance < 0 ? 0 : 1;
-            var overshoot = distance < 0 ? -distance : distance - rail.Profile.Length;
-            var next = this.NextRail(rail, end);
-            if (next == null)
-            {
-                var endTangent = this.RailTangent(rail, end, (r, e) => this.NextRail(r, e));
-                var velocity = endTangent * (float)this.state.Speed;
-                this.departureDirection = endTangent * (end == 0 ? -1 : 1);
-                this.departurePoint = this.RailPosition(rail, end, (r, e) => this.NextRail(r, e));
-                this.Parent.Position = this.departurePoint + this.departureDirection * overshoot;
-                this.Parent.Rotation = this.RailRotation(rail, end, endTangent * this.facing);
-                this.departedRail = rail;
-                this.current = null;
-                this.captureOffset = Vector3.Zero;
-                this.nativeGroundPhysics = false;
-                this.flightVelocity = velocity;
-                this.flightFacingSign = Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ), velocity) < 0 ? -1 : 1;
-                this.inFlight = true;
-                ((RailVehicleObject)this.Parent).SetRailGuidance(true);
-                ((RailVehicleObject)this.Parent).PublishRailPose(velocity);
-                this.Sound(0);
-                return;
-            }
-            var sign = end == next.Value.End ? -1 : 1;
-            this.state = this.state with { Speed = this.state.Speed * sign };
-            this.facing *= sign;
-            rail = next.Value.Rail;
-            if (!this.CheckRail(rail, this.state.Speed)) return;
-            distance = next.Value.End == 0 ? overshoot : rail.Profile.Length - overshoot;
+            var end=cursor.Remaining<0?0:1;
+            var endTangent=this.RailTangent(rail,end,this.NextRail);
+            this.departureDirection=endTangent*(end==0?-1:1);
+            this.departurePoint=this.RailPosition(rail,end,this.NextRail);
+            this.Parent.Position=this.departurePoint+this.departureDirection*(float)Math.Abs(cursor.Remaining);
+            this.Parent.Rotation=this.RailRotation(rail,end,endTangent*this.facing);
+            this.departedRail=rail;this.current=null;this.captureOffset=Vector3.Zero;
+            this.nativeGroundPhysics=false;this.flightVelocity=endTangent*(float)this.state.Speed;
+            this.flightFacingSign=Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ),this.flightVelocity)<0?-1:1;
+            this.inFlight=true;
+            this.RailVehicle.SetRailGuidance(true);this.RailVehicle.PublishRailPose(this.flightVelocity);this.Sound(0);
+            // Departure is a coupled pose transition in this same tick. The
+            // grounded branch below no longer runs after current is cleared;
+            // deferring followers until the next timer stretched every drawbar.
+            this.Parent.GetComponent<RailCouplingComponent>()?.FollowFree(this.flightVelocity);
+            return;
         }
-        this.current = rail;
-        this.t = Math.Clamp(distance / rail.Profile.Length, 0, 1);
+        this.current=rail;this.t=cursor.Progress;
     }
 
     private void LimitSharpCoasterSpeed(VoxelRail rail)

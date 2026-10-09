@@ -82,7 +82,7 @@ public sealed partial class CoasterStationComponent
         }
         placement=new(rail,t,facing,position,rotation,tail);error="";return true;
     }
-    private static bool LevelStraight(VoxelRail rail,Vector3 forward){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/LevelStraight"); return rail.Profile.Coaster&&
+    internal static bool LevelStraight(VoxelRail rail,Vector3 forward){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/LevelStraight"); return rail.Profile.Coaster&&
         Enumerable.Range(0,5).All(i=>Math.Abs(Vector3.Dot(rail.Profile.Tangent(i/4f),forward))>.999f&&rail.Profile.Up(i/4f).Y>.999f); }
 
     internal async Task PlaceCart(Player player,RollerCoasterCartItem item)

@@ -42,7 +42,7 @@ namespace EcoMinecarts.Editor
             else { EditorUtility.CopySerialized(bitmap, saved); Object.DestroyImmediate(bitmap); EditorUtility.SetDirty(saved); }
             return saved;
         }
-        static TMP_FontAsset PrepareFont()
+        internal static TMP_FontAsset PrepareFont()
         {
             const string path = Root + "/Materials/RailVehicleStaticFont.asset";
             if (AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path) == null &&
@@ -133,12 +133,40 @@ namespace EcoMinecarts.Editor
                             Plate(new Vector3(0, 2.22f, end * 1.347f), end > 0 ? 180 : 0, 1.1524f, .27f);
                         foreach (var board in destinationBoards) Object.DestroyImmediate(board.gameObject);
                         foreach (var trim in renderers.Where(r => r.name == "Destination frame" || r.name == "Destination stile"))
-                            trim.transform.SetParent(group.transform, true);
+                            Object.DestroyImmediate(trim.gameObject);
+                        var trimMaterial=AssetDatabase.LoadAssetAtPath<Material>(Root+"/Materials/MAT_VehicleCream.mat")??plateMaterial;
+                        foreach(var label in labels)
+                            foreach(var edge in new[]{new Vector3(0,.135f,0),new Vector3(0,-.135f,0),new Vector3(.5762f,0,0),new Vector3(-.5762f,0,0)})
+                            {
+                                var trim=GameObject.CreatePrimitive(PrimitiveType.Cube);trim.name="Destination frame";
+                                trim.transform.SetParent(label.transform,false);trim.transform.localPosition=edge+new Vector3(0,0,.001f);
+                                trim.transform.localScale=edge.x==0?new Vector3(1.19f,.027f,.025f):new Vector3(.027f,.27f,.025f);
+                                Object.DestroyImmediate(trim.GetComponent<Collider>());trim.GetComponent<Renderer>().sharedMaterial=trimMaterial;
+                            }
+                        NightLamps(root);
+                    }
+                    else if (root.transform.Find("CabFittings/Cab rear panel") is Transform cabRear)
+                    {
+                        // The imported rear artwork is batched: its stable cab
+                        // transform remains, even when the named renderer does not.
+                        Plate(cabRear.localPosition+new Vector3(0,0,-cabRear.localScale.z/2-.022f),0,.72f,.19f);
                     }
                     else if (rearPanel != null)
                     {
                         var p = root.transform.InverseTransformPoint(rearPanel.bounds.center);
                         Plate(p + new Vector3(0, 0, -rearPanel.bounds.extents.z - .02f), 0, .72f, .19f);
+                    }
+                    else if(root.transform.Find("PreparedVehicleArt")!=null)
+                    {
+                        // Use the current visible shell. Legacy procedural
+                        // renderers are retired after model integration.
+                        var bucket=root.transform.Find("DumpAnimation/DumpHinge/Bucket");
+                        var shell=(bucket!=null?bucket:root.transform.Find("PreparedVehicleArt"))
+                            .GetComponentsInChildren<MeshRenderer>(true).First(r=>r.name=="Render_LOD0");
+                        var p=root.transform.InverseTransformPoint(shell.bounds.center);
+                        var size=shell.bounds.size;float y=bucket!=null?p.y:shell.bounds.min.y+.32f;
+                        foreach(var side in new[]{-1,1})
+                            Plate(new Vector3(p.x+side*(size.x/2+.022f),y,p.z),side>0?-90:90,.46f,.14f);
                     }
                     else if (coachSides.Length > 0)
                     {
@@ -196,12 +224,34 @@ namespace EcoMinecarts.Editor
                     group.SetActive(true);
                     vehicle.States = states; vehicle.OnStateChangedEvents = changed;
                     vehicle.OnStateEnabledEvents = on; vehicle.OnStateDisabledEvents = off;
+                    TrainLampPresentation.Configure(root);
                     PrefabUtility.SaveAsPrefabAsset(root, path); count++;
                 }
                 finally { PrefabUtility.UnloadPrefabContents(root); }
             }
             AssetDatabase.SaveAssets();
             Debug.Log("RAIL_VEHICLE_TEXT_OK: " + count + " vehicles; static font; blank plates hidden");
+        }
+        static void NightLamps(GameObject root)
+        {
+            var old=root.transform.Find("Tram night lamps");if(old!=null)Object.DestroyImmediate(old.gameObject);
+            var host=new GameObject("Tram night lamps");host.transform.SetParent(root.transform,false);
+            var world=root.GetComponent<WorldObject>();int index=Array.IndexOf(world.States,"TramNightLights");
+            var states=world.States;var changed=world.OnStateChangedEvents;var on=world.OnStateEnabledEvents;var off=world.OnStateDisabledEvents;
+            if(index<0){index=states.Length;Array.Resize(ref states,index+1);Array.Resize(ref changed,index+1);Array.Resize(ref on,index+1);Array.Resize(ref off,index+1);states[index]="TramNightLights";}
+            changed[index]=new ChangedStateEvent();on[index]=new SetStateEvent();off[index]=new SetStateEvent();
+            foreach(int end in new[]{-1,1})
+            {
+                var lamp=new GameObject(end>0?"Front warm headlamp":"Rear warm headlamp");lamp.transform.SetParent(host.transform,false);
+                lamp.transform.localPosition=new Vector3(0,1.26f,end*1.40f);
+                var light=lamp.AddComponent<Light>();light.type=LightType.Point;light.color=new Color(1,.82f,.52f);light.range=7;light.intensity=1.8f;light.shadows=LightShadows.None;light.enabled=false;
+                lamp.AddComponent<EcoLight>();
+                var setter=(UnityEngine.Events.UnityAction<bool>)Delegate.CreateDelegate(typeof(UnityEngine.Events.UnityAction<bool>),light,typeof(Behaviour).GetProperty("enabled").GetSetMethod());
+                UnityEventTools.AddPersistentListener(changed[index],setter);
+            }
+            // Native driving lights must not overwrite the server's night state.
+            root.GetComponent<RCCCarControllerV2>().headLights=new Light[0];
+            world.States=states;world.OnStateChangedEvents=changed;world.OnStateEnabledEvents=on;world.OnStateDisabledEvents=off;
         }
     }
 }

@@ -98,8 +98,9 @@ namespace EcoMinecarts.Editor
             if(target!=null)n.AddComponent<SpecificInteractable>().interactionTargetName=target;
             return n.GetComponent<BoxCollider>();
         }
-        public static void Verify(GameObject prefab)
+        public static void Verify(GameObject prefab,bool originalDesign=false)
         {
+            bool prepared=!originalDesign&&prefab.transform.Find("PreparedVehicleArt")!=null;
             RailRiderInteractionAssetBuilder.Verify(prefab, explicitExit:true);
             RailWalkingPlatformAssetBuilder.Verify(prefab);
             var mount=prefab.GetComponent<Mountable>();
@@ -114,7 +115,8 @@ namespace EcoMinecarts.Editor
             var deck=fittings.Find("Cab floor");
             var panel=fittings.Find("Cab console");
             var rail=fittings.Find("Standing handrail");
-            var brackets=fittings.Cast<Transform>().Where(t=>t.name=="Handrail bracket").ToArray();
+            var visual=originalDesign?prefab.transform.Find("LegacyDesignGeometry/CabFittings"):fittings;
+            var brackets=visual.Cast<Transform>().Where(t=>t.name.StartsWith("Handrail bracket")).ToArray();
             if(brackets.Length!=2 || brackets.Any(t=>
                 t.localPosition.y+t.localScale.y/2 < panel.localPosition.y-panel.localScale.y/2 ||
                 t.localPosition.y-t.localScale.y/2 > rail.localPosition.y+rail.localScale.y/2))
@@ -127,8 +129,8 @@ namespace EcoMinecarts.Editor
                     throw new Exception("Missing standing cab control: "+key);
             // Check clearance at the intended standing body's center, not just
             // that the old blocker was renamed or replaced by another solid box.
-            var cushion=fittings.Find("Operator cushion");
-            if(Mathf.Abs(cushion.GetComponent<Renderer>().bounds.max.y-mount.seats[1].transform.position.y-RailRiderFit.SeatedHipHeight+RailRiderFit.RiderLift)>.002f)
+            var cushion=visual.Find("Operator cushion");
+            if(Mathf.Abs(cushion.GetComponentInChildren<Renderer>(true).bounds.max.y-mount.seats[1].transform.position.y-RailRiderFit.SeatedHipHeight+(prepared?0:RailRiderFit.RiderLift))>.002f)
                 throw new Exception("Operator cushion does not match seated hip datum: "+prefab.name);
             var bodyCenter=mount.seats[1].transform.position+Vector3.up*1.05f;
             // Placement volumes are removed by Eco; disabled/trigger colliders are not solid cab obstacles.
@@ -141,7 +143,7 @@ namespace EcoMinecarts.Editor
             var copy=Object.Instantiate(prefab);
             try
             {
-                copy.SetActive(true);copy.GetComponent<Rigidbody>().isKinematic=true;
+                copy.SetActive(true);if(copy.GetComponent<Animator>()!=null)RailVehicleDesignProbe.Select(copy,!originalDesign);copy.GetComponent<Rigidbody>().isKinematic=true;
                 // Match Eco placement before testing the occupied cab and entry paths.
                 foreach(var placement in copy.GetComponentsInChildren<ColliderPlacementOptions>(true))
                     if(placement.RemoveColliderAfterPlacement)foreach(var collider in placement.GetComponents<Collider>())Object.DestroyImmediate(collider);
@@ -151,6 +153,7 @@ namespace EcoMinecarts.Editor
                     throw new Exception("Live cab collider does not belong to walking platform: "+prefab.name);
                 var world=copy.GetComponent<WorldObject>();
                 var gateIndex=Array.IndexOf(world.States,"CabTravelGatesClosed");
+                for(int i=0;i<world.OnStateChangedEvents[gateIndex].GetPersistentEventCount();i++)world.OnStateChangedEvents[gateIndex].SetPersistentListenerState(i,UnityEngine.Events.UnityEventCallState.EditorAndRuntime);
                 world.OnStateChangedEvents[gateIndex].Invoke(true); Physics.SyncTransforms();
                 foreach(var side in new[]{"Left travel gate","Right travel gate"})
                     if(!activeDeck.Find(side).gameObject.activeSelf || activeDeck.Find(side).GetComponent<Collider>().attachedRigidbody!=activeDeck.GetComponent<Rigidbody>())
@@ -176,7 +179,7 @@ namespace EcoMinecarts.Editor
                 foreach(var seat in copy.GetComponent<Mountable>().seats.Skip(1))
                 foreach(var name in new[]{"Throttle grip","Brake grip","Reverser grip","Route selector grip","Cab console","Standing handrail"})
                 {
-                    var target=copy.transform.Find("CabFittings/"+name).GetComponent<SpecificInteractable>();
+                    var target=activeDeck.GetComponentsInChildren<SpecificInteractable>().Single(t=>t.name==name);
                     var from=seat.transform.position+Vector3.up*1.65f;
                     var toward=target.transform.position-from;
                     var downPitch=Mathf.Atan2(-toward.y,new Vector2(toward.x,toward.z).magnitude)*Mathf.Rad2Deg;

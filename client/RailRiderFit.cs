@@ -89,6 +89,7 @@ namespace EcoMinecarts.Editor
         }
         public static int Verify(GameObject root)
         {
+            if(root.transform.Find("PreparedVehicleArt")!=null){RailPreparedVehicleFit.Verify(root);return root.GetComponent<Mountable>().seats.Length-1;}
             if (!RailVehicleDetail.Handles(root)) return 0;
             var mounts = root.GetComponent<Mountable>();
             if (root.transform.Find("CabFittings") != null) StandingCabAssetBuilder.Verify(root);

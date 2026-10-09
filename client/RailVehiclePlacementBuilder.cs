@@ -27,10 +27,10 @@ namespace EcoMinecarts.Editor
                     // Wheel flanges, pull handles, walking decks and interaction
                     // targets penetrate the track in a valid placement. Eco's
                     // native placement volume excludes them from its preview.
-                    // Native snap overlap checks solid rail cells up to y=.5.
-                    // Keep the preview volume above that cell while actual wheel
-                    // and chassis colliders retain their authored dimensions.
-                    var bottom=Mathf.Max(.55f,length*.125f+.15f);
+                    // Eco subtracts (box.center.y - box.size.y/2) from a snap
+                    // placement. Raising the preview's bottom therefore buried
+                    // the root by .55-.75 m. Anchor it at the wheel-contact pivot.
+                    var bottom=0f;
                     var height=Mathf.Max(.25f,top-bottom);
                     var node=new GameObject("Rail vehicle placement volume");
                     node.transform.SetParent(root.transform,false);

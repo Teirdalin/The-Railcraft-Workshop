@@ -4,16 +4,17 @@ using Eco.Shared.Serialization;
 namespace Eco.Minecarts.Runtime;
 
 /// <summary>Server poses for rail-only stock; native physics remains available for hand-operated carts.</summary>
-internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
+internal sealed class RailVehicleNetEntity : NetPhysicsEntity
 {
     private readonly RailVehicleObject? cart;
-    public MinecartNetPhysicsEntity(string type, INetObject owner) : base(type, owner)
+    public RailVehicleNetEntity(string type, INetObject owner) : base(type, owner)
     {
         this.cart = owner as RailVehicleObject;
         this.guided = this.cart?.ServerOnlyPhysics == true;
     }
     private readonly object ownershipGate = new();
     private bool guided;
+    private Eco.Minecarts.Physics.ManualCartRailState? railSample;
     private bool handoffPending;
     private float guidedKeyframeTime;
     private double clockOrigin = Eco.Shared.Time.TimeUtil.Seconds;
@@ -29,6 +30,7 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
         // refresh that cache for distant viewers before publishing the keyframe.
         this.Position = this.cart.Position;
         this.Rotation = this.cart.Rotation;
+        this.railSample = this.cart.GetComponent<MinecartMotionComponent>()?.ManualCart?.State;
     }
 
     public void SetGuided(bool value)
@@ -66,6 +68,11 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
             this.Velocity = velocity;
             this.guidedKeyframeTime = this.clockBase + (float)(Eco.Shared.Time.TimeUtil.Seconds - this.clockOrigin);
             this.MarkPoseUpdated();
+            // Continuous movement uses only the interpolated physics stream.
+            // SyncPositionAndRotation forces an immediate client snap to the
+            // current server pose, ahead of the buffered interpolation timeline.
+            // Repeating that snap makes the next buffered pose jump backwards.
+            // Keep absolute sync at explicit recovery and ownership handoffs.
         }
     }
 
@@ -126,12 +133,18 @@ internal sealed class MinecartNetPhysicsEntity : NetPhysicsEntity
             else base.SendUpdate(packet, viewer);
             foreach (var entry in packet.ToArray())
             {
-                if (entry.Key == "v") continue;
+                if (entry.Key is "v" or "controller") continue;
                 data[entry.Key] = entry.Value;
                 packet[entry.Key] = null; // Transfer pooled-value ownership.
             }
         }
         finally { packet.Recycle(); }
+        data["pos"] = this.Position; data["rot"] = this.Rotation;
+        if (this.railSample is {} at)
+        {
+            data["railProgress"]=at.Progress; data["railSpeed"]=(float)at.Speed;
+            data["railFacing"]=at.Facing; data["railSequence"]=at.Sequence;
+        }
     }
 
     public override bool IsRelevant(INetObjectViewer viewer)

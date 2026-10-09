@@ -141,7 +141,7 @@ namespace EcoMinecarts.Editor
                             var oldLatch=nodes.FirstOrDefault(n=>n.name=="DoorLatch");if(oldLatch!=null)Object.DestroyImmediate(oldLatch.gameObject);
                             Pin(detail,"Smokebox latch boss",dc,.035f,.025f,dark,Quaternion.Euler(90,0,0));
                             for(var i=0;i<8;i++){var a=i*Mathf.PI/4;Pin(detail,"Smokebox bolt",dc+new Vector3(Mathf.Sin(a),Mathf.Cos(a),0)*radius*.72f,.012f,.008f,steel,Quaternion.Euler(90,0,0));}
-                            Beam(detail,"Smokebox locking bar",dc+Vector3.left*radius*.4f,dc+Vector3.right*radius*.4f,.025f,.025f,steel);
+                            Beam(detail,"Smokebox locking bar",dc+Vector3.forward*.006f+Vector3.left*radius*.4f,dc+Vector3.forward*.006f+Vector3.right*radius*.4f,.025f,.025f,steel);
                         }
                     }
                     if(root.name=="RollerCoasterCartObject")foreach(var side in new[]{-1,1})foreach(var end in new[]{-1,1})

@@ -84,19 +84,9 @@ public static class RailGuidance
         Func<VoxelRail, int, (VoxelRail Rail, int End)?> neighbor, out int orientation)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Advance");
-        orientation = 1;
-        var distance = t * rail.Profile.Length + (float)travel;
-        for (var crossed = 0; crossed < 8; crossed++)
-        {
-            if (distance >= 0 && distance <= rail.Profile.Length) break;
-            var end = distance < 0 ? 0 : 1;
-            var overshoot = distance < 0 ? -distance : distance - rail.Profile.Length;
-            if (neighbor(rail, end) is not { } next) { distance = Math.Clamp(distance, 0, rail.Profile.Length); break; }
-            if (end == next.End) orientation = -orientation;
-            rail = next.Rail;
-            distance = next.End == 0 ? overshoot : rail.Profile.Length - overshoot;
-        }
-        return (rail, Math.Clamp(distance / rail.Profile.Length, 0, 1));
+        var next=RailPathCursor.Travel(rail,t,travel,neighbor,8);
+        orientation=next.Orientation;
+        return (next.Rail,next.Progress);
     }
 
     public static bool ShouldPublishPose(Vector3 previous, Vector3 next,

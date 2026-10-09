@@ -18,22 +18,22 @@ public sealed record RailVehicleSpec(string Key, string Name, double EmptyKg, do
     public float HalfGauge => Industrial ? 1f : .30f;
     public float BodyWidth => Tram ? 1.34f : Coaster ? 1.2f : Tier == "Industry" ? 2.2f : .84f;
     public double MaximumAcceleration => Model == "Express" ? 2.5 : Model is "Freight" or "LargeEngine" ? .65 : 1.5;
-    private static readonly RailVehicleSpec DefaultMinecart = new("Minecart", "Minecart", 280, 2500, 12, 1.612f, .82f, .5f, 18, 0, 0, 4800, 0, Pullable: true);
-    private static readonly RailVehicleSpec DefaultMineTrain = new("MineTrain", "Mine Train", 600, 250, 4, 1.86f, .82f, .5f, 30, 12000, 5500, 6000, 8000, Model: "Engine");
+    private static RailVehicleSpec DefaultMinecart => Eco.Mods.TechTree.MinecartObject.DefaultSpecification;
+    private static RailVehicleSpec DefaultMineTrain => Eco.Mods.TechTree.MineTrainObject.DefaultSpecification;
     private static readonly RailVehicleSpec[] DefaultAdditional =
     [
-        new("HeritageTram", "Heritage Tram", 1250, 100, 4, 2.8f, 1.7f, .5f, 20, 9000, 7000, 9000, 2500, PassengerSeats:6, Model:"Tram"),
-        new("RollerCoasterCart", "Roller Coaster Cart", 300, 0, 1, 1.8f, .8f, .5f, 40, 0, 0, 7000, 0, PassengerSeats: 2, Model: "Coaster"),
-        new("RailroadHandcar", "Railroad Handcar", 180, 100, 4, 1.9f, 1.0f, .5f, 8, 450, 700, 2500, 900, Model: "Handcar"),
-        new("WoodenMinecart", "Wooden Minecart", 80, 400, 8, 1.612f, .82f, .5f, 12, 0, 0, 1300, 0, Pullable: true, DurabilityHours: 40, Model: "Wood", Tier: "Wood"),
-        new("PassengerLocomotive", "Passenger Locomotive", 1100, 150, 4, 2.6f, 1.25f, .5f, 30, 38000, 5000, 8500, 5000, Model: "Express", Tier: "Steel"),
-        new("FreightLocomotive", "Heavy-Haul Locomotive", 2200, 400, 6, 3.0f, 1.6f, 1.0f, 30, 75000, 18000, 13000, 25000, Model: "Freight", Tier: "Steel"),
-        new("PassengerCar", "Passenger Car", 650, 100, 4, 2.4f, 1.2f, .5f, 30, 0, 0, 2200, 0, PassengerSeats: 4, Model: "Passenger"),
-        new("CoalTender", "Coal Tender", 480, 3000, 12, 2.0f, 1.0f, .5f, 30, 0, 0, 1800, 0, Tender: true, Model: "Tender"),
-        new("LargeTrainEngine", "Large Train Engine", 7000, 1000, 8, 4.8f, 2.6f, 2.5f, 30, 250000, 70000, 40000, 100000, Model: "LargeEngine", Tier: "Industry"),
-        new("LargeCargoCar", "Large Cargo Car", 5000, 20000, 48, 4.4f, 2.8f, 2.5f, 30, 0, 0, 8000, 0, Model: "LargeCargo", Tier: "Industry"),
-        new("LargePassengerCar", "Large Passenger Car", 4500, 500, 8, 4.6f, 2.8f, 2.5f, 30, 0, 0, 6500, 0, PassengerSeats: 8, Model: "LargePassenger", Tier: "Industry"),
-        new("LargeCoalTender", "Large Coal Tender", 3500, 12000, 32, 3.8f, 2.4f, 2.5f, 30, 0, 0, 6000, 0, Tender: true, Model: "LargeTender", Tier: "Industry")
+        Eco.Mods.TechTree.HeritageTramObject.DefaultSpecification,
+        Eco.Mods.TechTree.RollerCoasterCartObject.DefaultSpecification,
+        Eco.Mods.TechTree.RailroadHandcarObject.DefaultSpecification,
+        Eco.Mods.TechTree.WoodenMinecartObject.DefaultSpecification,
+        Eco.Mods.TechTree.PassengerLocomotiveObject.DefaultSpecification,
+        Eco.Mods.TechTree.FreightLocomotiveObject.DefaultSpecification,
+        Eco.Mods.TechTree.PassengerCarObject.DefaultSpecification,
+        Eco.Mods.TechTree.CoalTenderObject.DefaultSpecification,
+        Eco.Mods.TechTree.LargeTrainEngineObject.DefaultSpecification,
+        Eco.Mods.TechTree.LargeCargoCarObject.DefaultSpecification,
+        Eco.Mods.TechTree.LargePassengerCarObject.DefaultSpecification,
+        Eco.Mods.TechTree.LargeCoalTenderObject.DefaultSpecification,
     ];
     public static RailVehicleSpec Minecart => RailVehicleBalances.Resolve(DefaultMinecart);
     public static RailVehicleSpec MineTrain => RailVehicleBalances.Resolve(DefaultMineTrain);

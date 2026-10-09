@@ -107,6 +107,7 @@ public sealed partial class CoasterStationComponent
                     {
                         if(!ReturnedStations.TryAdd(Parent.ObjectID,0))return false;
                         loadingCart=true;
+                        foreach(var id in trains.Keys)ActiveStations.TryRemove(new KeyValuePair<Guid,CoasterStationComponent>(id,this));
                         arrivals.Clear();dispatched.Clear();securing.Clear();trains.Clear();
                         foreach(var plan in plans)
                         {

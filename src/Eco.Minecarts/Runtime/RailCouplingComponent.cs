@@ -232,6 +232,48 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
             return 0; // The touched car was disconnected before the shove.
         }
     }
+    internal (RailCouplingComponent Car,int Direction) LeadingEnd(int direction)
+    {
+        // Simulation ownership follows the rider. The leading physical end
+        // follows reciprocal couplers, including cars coupled facing backwards.
+        lock(LinkGate)
+        {
+            var car=this;var end=direction<0?-1:1;var seen=new HashSet<int>();
+            while(seen.Add(car.Parent.ID)&&car.Partner(end) is {} next)
+            {
+                end=-car.PartnerEnd(end);car=next;
+            }
+            return (car,end);
+        }
+    }
+    internal (VoxelRail Rail,float T,int Facing)? GuidedMemberPose(RailCouplingComponent member)
+    {
+        var actual=member.Parent.GetComponent<MinecartMotionComponent>().BoundConsistPose;
+        var motion=Parent.GetComponent<MinecartMotionComponent>();
+        if(member==this||actual==null||motion.BoundConsistPose is not {} root)return actual;
+        // The root advances several substeps before follower poses publish.
+        // Reuse FollowTrain's signed coupler spacing for that interim contact.
+        // Airborne/landing articulation continues to use each car's own contact.
+        if(Group().Any(c=>c.Parent.GetComponent<MinecartMotionComponent>() is {} m
+            &&(m.BoundConsistPose==null||m.AwaitingCoupledLanding||m.LandingRotationActive)))return actual;
+        lock(LinkGate)
+        {
+            var seen=new HashSet<int>();
+            (double Offset,int Facing)? Find(RailCouplingComponent car,double offset,int orientation)
+            {
+                if(!seen.Add(car.Parent.ID))return null;
+                if(car==member)return(offset,orientation);
+                foreach(var end in new[]{-1,1})
+                    if(car.Partner(end) is {} next&&Find(next,
+                        offset+end*orientation*(car.Vehicle.CouplerOffset+next.Vehicle.CouplerOffset+.10f),
+                        orientation*-end*car.PartnerEnd(end)) is {} found)return found;
+                return null;
+            }
+            if(Find(this,0,1) is not {} relative)return actual;
+            var cursor=RailPathCursor.Travel(root.Rail,root.T,relative.Offset*root.Facing,motion.NextRail);
+            return cursor.Valid&&cursor.Remaining==0?(cursor.Rail,cursor.Progress,root.Facing*relative.Facing*cursor.Orientation):actual;
+        }
+    }
     private static RailCouplingComponent SelectLeader(RailCouplingComponent[] group)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/SelectLeader");

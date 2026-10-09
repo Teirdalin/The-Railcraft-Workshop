@@ -1,0 +1,26 @@
+{
+  "version": "0.2.68",
+  "name": "Railworks Workshop",
+  "ecoVersion": "0.14.1.1 beta release-1079",
+  "prerelease": true,
+  "dllSha256": "56CB8F0324957F75B2C099F490D49267A89B66F78B3107882C05653FDD23F39E",
+  "bundleSha256": "7765A472A37E4E5F727AD914E619F8013C71D9321F8C3B6CF407287D061C6E68",
+  "editableVehicleFiles": 14,
+  "savedDefinitions": 962,
+  "existingSaveDefinitionsUnchanged": 962,
+  "additiveSaveDefinitions": 0,
+  "nativeVerified": true,
+  "frontDockingNativeCases": 24,
+  "liveMultiplayerVerified": false,
+  "serverContainsReadmes": false,
+  "cameraVersion": "0.2.67",
+  "cameraChanged": false,
+  "cameraInstalledOnJoin": false,
+  "assets": [
+    {
+      "name": "Railworks-Workshop-Server-0-2-68.zip",
+      "bytes": 44604450,
+      "sha256": "2AB4A2CFC3A2C02E0E7EAD0C1E5D60F8519DF8B7530B789DD1FA05EDE57BA4ED"
+    }
+  ]
+}

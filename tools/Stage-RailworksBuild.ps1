@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Version='0.2.38',[string]$Attempt='25',[string]$BundleAudit='validation/vehicle-rail-fit-0.2.38/bundle-audit.json',[switch]$EditableVehicles,[switch]$StartupRecovery,[switch]$ManualCarts,[int]$SavedDefinitions=929)
+param([string]$Version='0.2.38',[string]$Attempt='25',[string]$BundleAudit='validation/vehicle-rail-fit-0.2.38/bundle-audit.json',[switch]$EditableVehicles,[switch]$StartupRecovery,[switch]$ManualCarts,[switch]$IncludeCamera,[int]$SavedDefinitions=929)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $audit=Join-Path $root ("validation/railworks-"+$Version)
@@ -35,6 +35,7 @@ if([version]$Version -ge [version]'0.2.61'){
     }
 }
 if([version]$Version -ge [version]'0.2.62' -and !$log.Contains('COASTER_STATION_RETURN_NATIVE_OK:')){throw 'Station single-use return acceptance missing'}
+if([version]$Version -ge [version]'0.2.68' -and !$log.Contains('COASTER_FRONT_DOCKING_NATIVE_OK:')){throw 'Leading-car station docking acceptance missing'}
 if([version]$Version -ge [version]'0.2.63' -and !$log.Contains('AUTOMATIC_TRAIN_LIGHTS_NATIVE_OK:')){throw 'Automatic train lighting acceptance missing'}
 if([version]$Version -ge [version]'0.2.58'){
     foreach($marker in @('COASTER_QUEUED_LANDING_NATIVE_OK:','COASTER_JUMP_LANDING_NATIVE_OK:')){
@@ -111,10 +112,11 @@ try{
 Copy-Item -LiteralPath $zip -Destination $desktop
 @{version=$Version;name='Railworks Workshop';dllHash=$native.candidateHash;bundleHash=$previous.bundleHash;zipHash=(Get-FileHash -LiteralPath $desktop).Hash;savedSchema=$SavedDefinitions;nativeVerified=$true;liveRenderingVerified=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'stage.json')
 Write-Output ('RAILWORKS_STAGED: '+$desktop)
-if([version]$Version -ge [version]'0.2.63'){
+if($IncludeCamera){
     $camera=Join-Path $root 'development/Eco.Railcraft.CoasterCamera.Client/bin/Release/net6.0/Eco.Railcraft.CoasterCamera.Client.dll'
     if(!(Test-Path -LiteralPath $camera)){throw 'Build the optional camera client first'}
-    $cameraName='Railworks-Workshop-BepInEx-Camera-'+$Version.Replace('.','-')
+    $cameraVersion=[Reflection.AssemblyName]::GetAssemblyName($camera).Version.ToString(3)
+    $cameraName='Railworks-Workshop-BepInEx-Camera-'+$cameraVersion.Replace('.','-')
     $cameraStage=Join-Path $root ('dist/'+$cameraName)
     $cameraZip=Join-Path $root ('dist/'+$cameraName+'.zip')
     $cameraDesktop=Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) ($cameraName+'.zip')
@@ -124,6 +126,6 @@ if([version]$Version -ge [version]'0.2.63'){
     Copy-Item -LiteralPath (Join-Path $root 'development/Eco.Railcraft.CoasterCamera.Client/README.md') -Destination (Join-Path $cameraStage 'README.md')
     Compress-Archive -Path (Join-Path $cameraStage '*') -DestinationPath $cameraZip
     Copy-Item -LiteralPath $cameraZip -Destination $cameraDesktop
-    @{version=$Version;name='Railworks Workshop optional BepInEx camera';pluginHash=(Get-FileHash -LiteralPath $camera).Hash;zipHash=(Get-FileHash -LiteralPath $cameraDesktop).Hash;requiresLocalLoader=$true;installedOnJoin=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'camera-stage.json')
+    @{version=$cameraVersion;name='Railworks Workshop optional BepInEx camera';pluginHash=(Get-FileHash -LiteralPath $camera).Hash;zipHash=(Get-FileHash -LiteralPath $cameraDesktop).Hash;requiresLocalLoader=$true;installedOnJoin=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'camera-stage.json')
     Write-Output ('RAILWORKS_CAMERA_STAGED: '+$cameraDesktop)
 }

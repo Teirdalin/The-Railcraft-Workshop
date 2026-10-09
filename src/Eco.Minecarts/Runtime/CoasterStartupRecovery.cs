@@ -9,10 +9,12 @@ namespace Eco.Minecarts.Runtime;
 public sealed partial class CoasterStationComponent
 {
     [Serialized] public long DepartureSequence {get;set;}
-    private void RememberDeparture(RailCouplingComponent train)
+    private void RememberDeparture(RailCouplingComponent front,int direction)
     {
-        var forward=train.Parent.Rotation.RotateVector(Vector3.UnitZ);
-        foreach(var car in train.Group().OrderByDescending(c=>Vector3.Dot(c.Parent.Position,forward)))
+        var forward=front.Parent.Rotation.RotateVector(Vector3.UnitZ)*direction;
+        // Starting at the physical endpoint gives the real consist order even
+        // if the occupied simulation owner is a backwards-facing middle car.
+        foreach(var car in front.Group())
         {
             var motion=car.Parent.GetComponent<MinecartMotionComponent>();
             motion.CoasterHomeStation=Parent.ObjectID;

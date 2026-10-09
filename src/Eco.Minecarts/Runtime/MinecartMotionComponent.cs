@@ -186,7 +186,7 @@ public sealed partial class MinecartMotionComponent : WorldObjectComponent, IHas
     private Quaternion landingRotationOffset = Quaternion.Identity;
     private Vector3 landingPivot;
     private double landingRotationElapsed = .45;
-    private bool LandingRotationActive => this.landingRotationElapsed < .45;
+    internal bool LandingRotationActive => this.landingRotationElapsed < .45;
     private void BeginLandingRotation(VoxelRail rail, float parameter, Vector3 forward)
     {
         if (!this.RailVehicle.RailSpec.Coaster) return;
@@ -1302,7 +1302,7 @@ public sealed partial class MinecartMotionComponent : WorldObjectComponent, IHas
         // Station dwell/dispatch, lift polling and unbraked slope motion need the
         // normal solver. A brake must actually settle the car before sleeping.
         return RailMotionSleepClock.RailCanSleep(this.Handbrake, rail.Profile.Chain,
-            CoasterStationComponent.At(rail.Cell) != null, rail.Profile.Tangent(this.t).Y);
+            this.RailVehicle.RailSpec.Coaster&&CoasterStationComponent.ControlsTrain(this.Parent.GetComponent<RailCouplingComponent>()), rail.Profile.Tangent(this.t).Y);
     }
 
     public override void Tick()
@@ -1748,10 +1748,10 @@ public sealed partial class MinecartMotionComponent : WorldObjectComponent, IHas
             new(this,rail,this.t,this.facing,this.state.Speed,dt,tangent.Y));
         var input=(Force:command.Force,Brake:command.Brake);
         if (this.serverDriving || control?.Active == true) this.Handbrake = input.Brake;
-        if(this.RailVehicle.RailSpec.Coaster && CoasterStationComponent.At(rail.Cell) is {} station)
+        if(this.RailVehicle.RailSpec.Coaster && CoasterStationComponent.TryControl(this.Parent.GetComponent<RailCouplingComponent>(),this.facing,this.state.Speed,out var stationInput))
         {
             this.coasterQueueFeed=false;
-            input=station.Control(this.Parent.GetComponent<RailCouplingComponent>(),this.facing,this.state.Speed);
+            input=stationInput;
             this.Handbrake=input.Brake;
             this.coasterApproachBraking=false;
         }
@@ -1774,6 +1774,7 @@ public sealed partial class MinecartMotionComponent : WorldObjectComponent, IHas
             this.state=this.state with {Distance=Math.CopySign(Math.Min(Math.Abs(this.state.Distance),Math.Abs(this.state.Speed)*dt),this.state.Distance)};
         var limitedTravel = RailGuidance.LimitBufferTravel(rail, this.t, this.state.Distance, (r, end) => this.NextRail(r, end), this.RailVehicle.CouplerOffset + .194f);
         if(control!=null)limitedTravel=control.LimitStationTravel(limitedTravel);
+        if(this.RailVehicle.RailSpec.Coaster)limitedTravel=CoasterStationComponent.LimitStationTravel(this.Parent.GetComponent<RailCouplingComponent>(),this.facing,limitedTravel);
         limitedTravel = this.LimitVehicleTravel(rail, this.t, limitedTravel);
         if (Math.Abs(limitedTravel - this.state.Distance) > .000001)
             this.state = this.state with { Speed = 0, Distance = limitedTravel };

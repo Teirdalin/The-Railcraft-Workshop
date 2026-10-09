@@ -2,9 +2,9 @@
 
 Rails, minecarts, trains, trams and roller coasters for **Eco 0.14.1.1 beta release-1079**.
 
-**Latest packaged version: [0.2.67 prerelease](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.2.67).**
+**Latest packaged version: [0.2.68 prerelease](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.2.68).**
 
-Download [Railworks-Workshop-Server-0-2-67.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.67/Railworks-Workshop-Server-0-2-67.zip) for the server. It contains the matching `Railworks.dll` and `Railworks.unity3d` plus fourteen editable C# files in `Vehicles`. There are no READMEs, installers or client plugins in the server ZIP.
+Download [Railworks-Workshop-Server-0-2-68.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.68/Railworks-Workshop-Server-0-2-68.zip) for the server. It contains the matching `Railworks.dll` and `Railworks.unity3d` plus fourteen editable C# files in `Vehicles`. There are no READMEs, installers or client plugins in the server ZIP.
 
 ## Server installation
 
@@ -21,6 +21,8 @@ Each vehicle has its own editable `.cs` file. Change capacity, slots, carried-it
 
 Version 0.2.67 animates the original coaster's full padded guardrails and swing arms: they rise for boarding and lower before departure. Cancelled departures can reopen them smoothly. This uses the existing replicated station animation system.
 
+Version 0.2.68 docks the leading coaster car at the loading marker regardless of which coupled car owns the simulation or carries the rider. It retains the departure state until the entire train clears the station, including gaps between car centres.
+
 All fourteen vehicles ship their original artwork. Newer vehicle meshes and textures are deferred for future updates and excluded from this bundle. `NewDesign` defaults to `false` and remains for configuration compatibility; a stale `true` setting still shows the originals. The server ZIP is approximately **42.5 MiB**.
 
 Included updates since 0.2.40 improve independent coupled-car landing/contact, station queue progression and chain power, handcar curves and stop/dismount animation, lighting, seating and station presentation. Train lamps turn on at night or under high tunnel/cave cover. Coaster stations have editable signs and a **Return carts to station** button available once per station per server restart. See [release notes](RELEASE_NOTES.md).
@@ -30,6 +32,8 @@ Automatic positional resets on coaster loading are removed. Do not rely on momen
 ## Optional coaster camera
 
 The improved loop camera is a separate, per-player download: [Railworks-Workshop-BepInEx-Camera-0-2-67.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.67/Railworks-Workshop-BepInEx-Camera-0-2-67.zip).
+
+Camera versions are independent of server releases. The unchanged 0.2.67 camera works with server 0.2.68; station, physics and model updates do not require reinstalling it. A new camera ZIP is published when the plugin itself changes.
 
 Each player who wants it must install a compatible **BepInEx 6 IL2CPP** loader on their own Eco client, then extract the camera ZIP into the folder containing `Eco.exe`. The plugin belongs in `BepInEx/plugins`. The tested Windows x64 loader is BepInEx bleeding-edge build 788. The camera ZIP contains the plugin and its README; it does not include the loader or Eco assemblies.
 

@@ -13,7 +13,7 @@
   "frontDockingNativeCases": 24,
   "liveMultiplayerVerified": false,
   "serverContainsReadmes": false,
-  "cameraVersion": "0.2.67",
+  "cameraVersion": "0.2.66",
   "cameraChanged": false,
   "cameraInstalledOnJoin": false,
   "assets": [
@@ -21,6 +21,14 @@
       "name": "Railworks-Workshop-Server-0-2-68.zip",
       "bytes": 44604450,
       "sha256": "2AB4A2CFC3A2C02E0E7EAD0C1E5D60F8519DF8B7530B789DD1FA05EDE57BA4ED"
+    },
+    {
+      "name": "Optional.Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip",
+      "bytes": 6626,
+      "sha256": "3D67D521AAFB09EA1BE9540277A7EA3098A4270048D47A9DBE4BDD3A8B10475D",
+      "originalFilename": "Optional Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip"
     }
-  ]
+  ],
+  "cameraPackageReplaced": true,
+  "cameraReadmeSha256": "6C5B00B6B678C031A6F83D6637268A620B0D7C8FBCBBB2811A6A007CCB841769"
 }

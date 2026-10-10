@@ -31,9 +31,9 @@ Automatic positional resets on coaster loading are removed. Do not rely on momen
 
 ## Optional coaster camera
 
-The improved loop camera is a separate, per-player download: [Railworks-Workshop-BepInEx-Camera-0-2-67.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.67/Railworks-Workshop-BepInEx-Camera-0-2-67.zip).
+The improved loop camera is a separate, per-player download: [Optional Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.68/Optional.Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip).
 
-Camera versions are independent of server releases. The unchanged 0.2.67 camera works with server 0.2.68; station, physics and model updates do not require reinstalling it. A new camera ZIP is published when the plugin itself changes.
+Camera versions are independent of server releases. The current optional package is camera 0.2.66, with a short installation README. Station, physics and model updates do not require reinstalling the camera plugin.
 
 Each player who wants it must install a compatible **BepInEx 6 IL2CPP** loader on their own Eco client, then extract the camera ZIP into the folder containing `Eco.exe`. The plugin belongs in `BepInEx/plugins`. The tested Windows x64 loader is BepInEx bleeding-edge build 788. The camera ZIP contains the plugin and its README; it does not include the loader or Eco assemblies.
 

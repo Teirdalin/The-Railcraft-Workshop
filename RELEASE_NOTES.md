@@ -3,7 +3,7 @@
 - Dock the physical leading car at the station centre regardless of which car is occupied or selected as simulation leader. Determine the endpoint through reciprocal couplers, including backwards-facing cars and reverse travel.
 - Use shared rail/coupling geometry for current progress between physics substeps. Brake and creep through the existing force integrator, then cap travel at the marker without teleporting the train.
 - Keep arrival/dwell/dispatch identity stable through a change of simulation owner. Preserve dispatch until the whole consist passes the station, including the gap between car centres. Record departure/recovery order from the physical leading endpoint.
-- Ship a server-only update. The optional camera remains at 0.2.67; it only needs a new release when its plugin changes. Packaging the camera is now explicit and uses the plugin's own version.
+- Ship a server physics update. The optional camera is versioned separately; the current download is `Optional Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip` with its shorter installation README. Packaging the camera is explicit and uses the plugin's own version.
 - Private native checks cover single-, two- and three-car trains, front/middle/rear simulation owners, reverse-facing coupling, both directions, 2/8 m/s arrivals, multiple physics substeps, stopping at the centre, owner handoff and complete-train clearance. Live connected-player visual acceptance remains pending.
 
 # 0.2.67 prerelease - original coaster guardrails

@@ -58,7 +58,7 @@ public sealed partial class RailCouplingComponent
             {
                 var child=parent.Partner(end);if(child==null || !seen.Add(child.Parent.ID))continue;
                 var childEnd=parent.PartnerEnd(end);
-                var nextOffset=offset+end*bodySign*(parent.Vehicle.CouplerOffset+child.Vehicle.CouplerOffset+.10f);
+                var nextOffset=offset+end*bodySign*CoupledSpacing(parent,end,child,childEnd);
                 var childSign=bodySign*-end*childEnd;
                 if(!FollowTrajectory(parent,child,end,nextOffset,childSign,childEnd,velocity,out var correctedOffset))
                     FollowFreeBranch(parent,child,end,childEnd,velocity,parent.Parent.GetComponent<MinecartMotionComponent>().BoundRailCell!=null);
@@ -87,7 +87,7 @@ public sealed partial class RailCouplingComponent
         // boundary, especially while one car settles on its own running gear.
         // Solve along that same spatial path using both actual contact heights.
         // Carry the corrected cursor into the next drawbar; never copy pitch.
-        var spacing=parent.Vehicle.CouplerOffset+child.Vehicle.CouplerOffset+.10f;
+        var spacing=CoupledSpacing(parent,parentEnd,child,childEnd);
         for(var iteration=0;pose.Rail!=null && !childMotion.AwaitingCoupledLanding && iteration<4;iteration++)
         {
             var centre=childMotion.TrajectoryContactPoint(pose,bodyTravelSign);

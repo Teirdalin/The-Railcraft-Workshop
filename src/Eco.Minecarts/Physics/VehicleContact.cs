@@ -31,14 +31,25 @@ public readonly record struct VehicleBounds(Vector3 Position, Quaternion Rotatio
 
     public static float TravelFraction(VehicleBounds from, VehicleBounds to, IEnumerable<VehicleBounds> obstacles)
     {
-        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/TravelFraction");
         // Use bounding radii, not a fixed four-block neighbourhood: long coaches
         // can touch while their origins are much farther apart. Include the
         // rotated centre offset because the vehicle pivot is at rail height.
-        var sweepRadius = Vector3.Distance(from.Position, to.Position)
-            + from.HalfSize.Length() + from.HalfSize.Y + .08f;
-        var nearby = obstacles.Where(x => Vector3.DistanceSquared(x.Position, from.Position)
-            <= MathF.Pow(sweepRadius + x.HalfSize.Length() + x.HalfSize.Y + .08f, 2)).ToArray();
+        var sweepRadius = SweepRadius(from, to);
+        var nearby = obstacles.Where(x => x.NearSweep(from.Position, sweepRadius)).ToArray();
+        return TravelFractionNearby(from, to, nearby);
+    }
+
+    internal static float SweepRadius(VehicleBounds from, VehicleBounds to)
+        => Vector3.Distance(from.Position, to.Position) + from.HalfSize.Length() + from.HalfSize.Y + .08f;
+
+    internal bool NearSweep(Vector3 origin, float radius)
+        => Vector3.DistanceSquared(this.Position, origin) <= MathF.Pow(radius + this.HalfSize.Length() + this.HalfSize.Y + .08f, 2);
+
+    // Callers supply the same conservative broad phase once. The sampled SAT,
+    // rotation sweep and existing-overlap escape policy are shared unchanged.
+    internal static float TravelFractionNearby(VehicleBounds from, VehicleBounds to, ReadOnlySpan<VehicleBounds> nearby)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/TravelFraction");
         // No obstacle intersects the conservative swept bounding radius.
         // Avoid sampling rotations along an empty path, especially long
         // endpoint/world-wrap corrections reported during coaster jumps.

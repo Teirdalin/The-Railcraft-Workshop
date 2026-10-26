@@ -19,16 +19,17 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, RequireComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(FuelConsumptionComponent)), RequireComponent(typeof(AirPollutionComponent)), RequireComponent(typeof(MineTrainDrivingComponent)), RequireComponent(typeof(TrainControllerComponent))]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.MechanicsSkill),4)]
 public sealed class FreightLocomotiveObject : RollingStockObject
 {
-    public static RailVehicleSpec DefaultSpecification {get;} = new("FreightLocomotive", "Heavy-Haul Locomotive", 2200, 400, 6, 3.0f, 1.6f, 1.0f, 30, 75000, 18000, 13000, 25000, Model: "Freight", Tier: "Steel");
+    public static RailVehicleSpec DefaultSpecification {get;} = new("FreightLocomotive", "Heavy-Haul Locomotive", 2200, 400, 6, 3.0f, 1.6f, 1.0f, 30, 600000, 450000, 450000, 50000, Model: "Freight", Tier: "Steel");
     public override RailVehicleSpec RailSpec => RailVehicleBalances.Resolve(DefaultSpecification);
     public override RailVehicleCapabilities Capabilities => RailVehicleCapabilities.FueledMotor | RailVehicleCapabilities.StationRouting;
     public override RailFuelConfiguration FuelConfiguration=>new(2,["Burnable Fuel"]);
     static FreightLocomotiveObject() => AddOccupancy<FreightLocomotiveObject>([]);
 }
 
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
+[LocDescription("A powerful steam locomotive built to haul heavy freight. Couple it to loaded wagons and provide burnable fuel for the journey. Crafted at the Assembly Line using Mechanics.")]
 [Serialized, LocDisplayName("Heavy-Haul Locomotive"), Weight(15000)] public sealed class FreightLocomotiveItem : RailModuleItem<FreightLocomotiveObject> { }
 
 [RequiresSkill(typeof(MechanicsSkill), 3)] public sealed class FreightLocomotiveRecipe : RollingStockRecipe<FreightLocomotiveItem> { }

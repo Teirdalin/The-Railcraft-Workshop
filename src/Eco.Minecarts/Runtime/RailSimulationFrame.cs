@@ -9,10 +9,14 @@ namespace Eco.Minecarts.Runtime;
 internal static class RailSimulationFrame
 {
     private static long revision;
+    // Physical-network edits are distinct from consist/load cache changes.
+    // A departure waiting to reserve must not reject unrelated coupling.
+    private static long networkRevision;
     private static readonly object changeGate=new();
     private static readonly Queue<(long Revision,RailCell Cell)> changes=new(4096);
     private static long unknownRevision,droppedThrough;
     internal static long Revision => Volatile.Read(ref revision);
+    internal static long NetworkRevision => Volatile.Read(ref networkRevision);
     [ThreadStatic] private static State? state;
     private sealed class State
     {
@@ -40,15 +44,35 @@ internal static class RailSimulationFrame
         return new Scope();
     }
     internal static void Invalidate()
+    { lock(changeGate){Interlocked.Increment(ref networkRevision);unknownRevision=Interlocked.Increment(ref revision);} }
+    internal static void InvalidateConsist()
     { lock(changeGate)unknownRevision=Interlocked.Increment(ref revision); }
     internal static void InvalidateCell(RailCell cell)
     {
         lock(changeGate)
         {
+            Interlocked.Increment(ref networkRevision);
             var next=Interlocked.Increment(ref revision);
-            if(changes.Count>=4096)droppedThrough=changes.Dequeue().Revision;
-            changes.Enqueue((next,cell));
+            RecordChange(next,cell);
         }
+    }
+    // A multi-cell device publishes one coherent change. Frame-local reads
+    // still expire globally; persistent journeys only watch its footprint.
+    internal static void InvalidateCells(IReadOnlyList<RailCell> cells)
+    {
+        lock(changeGate)
+        {
+            Interlocked.Increment(ref networkRevision);
+            var next=Interlocked.Increment(ref revision);
+            if(cells.Count==0)unknownRevision=next;
+            foreach(var cell in cells)RecordChange(next,cell);
+        }
+    }
+    // The caller holds changeGate, including across a multi-cell publication.
+    private static void RecordChange(long next,RailCell cell)
+    {
+        if(changes.Count>=4096)droppedThrough=changes.Dequeue().Revision;
+        changes.Enqueue((next,cell));
     }
     // A fixed journey survives unrelated terrain edits. Unknown changes and
     // a reader that fell behind the bounded journal always require replanning.

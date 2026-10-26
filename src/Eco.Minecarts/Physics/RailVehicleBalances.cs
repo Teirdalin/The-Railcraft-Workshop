@@ -10,25 +10,33 @@ public sealed record RailVehicleBalance
     public double? EmptyMassKg { get; init; }
     public double? CargoCapacityKg { get; init; }
     public int? StorageSlots { get; init; }
+    public int? BulkCargoStackMultiplier {get;init;}
     public double? MaximumSpeedMetresPerSecond { get; init; }
     public double? PowerWatts { get; init; }
     public double? TractionNewtons { get; init; }
     public double? BrakingNewtons { get; init; }
     public double? IntendedTrainMassKg { get; init; }
     public double? DurabilityHours { get; init; }
+    public bool? SuppliesLocomotiveFuel {get;init;}
     public bool? AllowDumping {get;init;}
     public bool? NewDesign {get;init;}
+    public string? CargoFilterTags {get;init;}
 }
 
 public static class RailVehicleBalances
 {
+    // Eco exposes the synchronized flag with an internal setter. Cache its
+    // native setter once; selecting a tab never needs a timer or client patch.
+    private static readonly Action<Eco.Gameplay.Objects.WorldObjectComponent,bool> SelectDefaultTab=
+        typeof(Eco.Gameplay.Objects.WorldObjectComponent).GetProperty("DefaultSelectedTab")!
+            .GetSetMethod(true)!.CreateDelegate<Action<Eco.Gameplay.Objects.WorldObjectComponent,bool>>();
     private static readonly object Gate=new();
     private static Dictionary<string,RailVehicleSpec>? resolved;
     private static Dictionary<string,RailVehicleBalance>? settings;
-    private static bool dirty;
+    private static volatile bool dirty;
     static RailVehicleBalances()
     {
-        AppDomain.CurrentDomain.AssemblyLoad+=(_,_)=> { lock(Gate){dirty=true;} };
+        AppDomain.CurrentDomain.AssemblyLoad+=(_,_)=>dirty=true;
     }
     private static Dictionary<string,RailVehicleBalance> Discover()
     {
@@ -49,12 +57,17 @@ public static class RailVehicleBalances
                 }
                 var key=type.GetField("VehicleKey",BindingFlags.Public|BindingFlags.Static)?.GetRawConstantValue() as string
                     ??throw new InvalidOperationException("Missing VehicleKey in "+type.Name);
+                var cargoField=type.GetField("CargoFilterTags",BindingFlags.Public|BindingFlags.Static);
+                if(cargoField!=null&&(!cargoField.IsLiteral||cargoField.FieldType!=typeof(string)))
+                    throw new InvalidOperationException(type.Name+".CargoFilterTags must be a const string.");
                 var balance=new RailVehicleBalance {
+                    CargoFilterTags=cargoField?.GetRawConstantValue() as string,
                     CarriedItemWeightGrams=Read<int>("CarriedItemWeightGrams"),EmptyMassKg=Read<double>("EmptyMassKg"),
                     CargoCapacityKg=Read<double>("CargoCapacityKg"),StorageSlots=Read<int>("StorageSlots"),
+                    BulkCargoStackMultiplier=Read<int>("BulkCargoStackMultiplier"),
                     MaximumSpeedMetresPerSecond=Read<double>("MaximumSpeedMetresPerSecond"),PowerWatts=Read<double>("PowerWatts"),
                     TractionNewtons=Read<double>("TractionNewtons"),BrakingNewtons=Read<double>("BrakingNewtons"),
-                    IntendedTrainMassKg=Read<double>("IntendedTrainMassKg"),DurabilityHours=Read<double>("DurabilityHours"),AllowDumping=Read<bool>("AllowDumping"),NewDesign=Read<bool>("NewDesign")
+                    IntendedTrainMassKg=Read<double>("IntendedTrainMassKg"),DurabilityHours=Read<double>("DurabilityHours"),AllowDumping=Read<bool>("AllowDumping"),SuppliesLocomotiveFuel=Read<bool>("SuppliesLocomotiveFuel"),NewDesign=Read<bool>("NewDesign")
                 };
                 if(!found.TryAdd(key,balance))throw new InvalidOperationException("Duplicate Railworks settings for "+key+". Keep one .cs file for each vehicle.");
             }
@@ -64,6 +77,10 @@ public static class RailVehicleBalances
     public static void InitializeStorage(Eco.Gameplay.Components.Storage.PublicStorageComponent storage,RailVehicleSpec spec)
     {
         storage.Initialize(spec.Slots,(int)(spec.CargoKg*1000));
+        RailCargoFilters.Apply(storage.Inventory,spec.Key);
+        if(!spec.Powered&&!spec.HumanPowered&&!spec.Coaster&&spec.PassengerSeats==0&&spec.CargoKg>0)
+            foreach(var component in storage.Parent.Components)
+                SelectDefaultTab(component,ReferenceEquals(component,storage));
         if(storage.Inventory is Eco.Gameplay.Items.LimitedInventory inventory)
         {
             inventory.EnsureStacks(spec.Slots);
@@ -72,13 +89,44 @@ public static class RailVehicleBalances
             if(inventory.Stacks.Count()>spec.Slots)inventory.ShrinkTo(spec.Slots);
         }
     }
+    public static string[] CargoFilterTags(string key)
+    {
+        lock(Gate)
+        {
+            if(dirty){resolved=null;settings=null;dirty=false;}
+            settings??=Discover();
+            return (settings.GetValueOrDefault(key)?.CargoFilterTags??"")
+                .Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.Ordinal).ToArray();
+        }
+    }
+    public static int BulkCargoStackMultiplier(string key)
+    {
+        lock(Gate)
+        {
+            if(dirty){resolved=null;settings=null;dirty=false;}
+            settings??=Discover();
+            var value=settings.GetValueOrDefault(key)?.BulkCargoStackMultiplier??(key is "Minecart" or "WoodenMinecart"?5:1);
+            if(value<1||value>100)throw new InvalidOperationException(key+".BulkCargoStackMultiplier must be 1-100.");
+            return value;
+        }
+    }
+    public static bool SuppliesLocomotiveFuel(RailVehicleSpec spec)
+    {
+        lock(Gate)
+        {
+            if(dirty){resolved=null;settings=null;dirty=false;}
+            settings??=Discover();
+            return settings.GetValueOrDefault(spec.Key)?.SuppliesLocomotiveFuel??spec.Tender;
+        }
+    }
     public static bool AllowsDumping(string key)
     {
         lock(Gate)
         {
             if(dirty){resolved=null;settings=null;dirty=false;}
             settings??=Discover();
-            return settings.GetValueOrDefault(key)?.AllowDumping??key is "Minecart" or "WoodenMinecart";
+            return settings.GetValueOrDefault(key)?.AllowDumping??key is "Minecart" or "WoodenMinecart" or "LargeCargoCar";
         }
     }
     public static bool UsesNewDesign(string key)
@@ -145,3 +193,5 @@ public sealed class RailVehicleBalanceInitialization : Eco.Core.Plugins.Interfac
             RailVehicleBalances.ApplyItemWeight(spec.Key);
     }
 }
+
+

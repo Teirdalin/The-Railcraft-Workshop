@@ -5,11 +5,15 @@ namespace Eco.Minecarts.Runtime;
 
 // Shared network ownership and rail-pose contract for carts and locomotives.
 // Existing concrete saved object names remain unchanged.
+[RequireComponent(typeof(Eco.Gameplay.Components.PartsComponent))]
+[RequireComponent(typeof(RailConditionComponent))]
 [RequireComponent(typeof(RailVehicleAccessComponent))]
 [RequireComponent(typeof(RailVehicleTextComponent))]
 public abstract class RailVehicleObject : PhysicsWorldObject
 {
     private readonly object animationGate=new();
+    internal bool DriveSafetyBrake {get;set;}
+    internal float FuelDemandWatts { get; set; }
     private Guid dumpOwner;
     private float previousVisualSpeed;
     private long previousVisualTime;
@@ -47,6 +51,8 @@ public abstract class RailVehicleObject : PhysicsWorldObject
     public virtual RailFuelConfiguration? FuelConfiguration => null;
     public virtual RailVehiclePoints ConnectionPoints => RailVehiclePoints.Standard(CouplerOffset);
     internal bool ServerOnlyPhysics => !Capabilities.HasFlag(RailVehicleCapabilities.NativeGroundPhysics);
+    protected override void Initialize()
+    {base.Initialize();GetComponent<RailConditionComponent>().ConfigureParts();}
     protected override void CreateEntity() => this.netEntity = new RailVehicleNetEntity(GetType().Name,this);
     internal void SetRailGuidance(bool active)
     { SetAnimatedState("RailGuidedPhysics",active||ServerOnlyPhysics); ((RailVehicleNetEntity)netEntity).SetGuided(active); }

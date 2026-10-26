@@ -21,12 +21,12 @@ public static class ChainLift
     }
     // A speed-governed traction force, bounded by available mechanical power and
     // chain strength. It cannot create unlimited force or drag faster carts backwards.
-    public static double Force(double massKg, double grade, double speed, double watts, double targetSpeed = .5)
+    public static double Force(double massKg, double grade, double speed, double watts, double targetSpeed = .5, double maximumTractionN = 15000)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Chain propulsion/Force");
         if (massKg <= 0 || watts <= 0 || grade < 0 || speed > targetSpeed + .01) return 0;
         var load = massKg * 9.80665 * (grade + .008);
         var desired = load + massKg * (targetSpeed - speed) * 3;
-        return Math.Clamp(desired, 0, Math.Min(15000, watts / Math.Max(.1, Math.Abs(speed))));
+        return Math.Clamp(desired, 0, Math.Min(Math.Max(0,maximumTractionN), watts / Math.Max(.1, Math.Abs(speed))));
     }
 }

@@ -1,9 +1,13 @@
 namespace Eco.Mods.TechTree;
 using Eco.Core.Items;
+using Eco.Core.Utils;
+using Eco.Gameplay.Auth;
 using Eco.Gameplay.Components.Auth;
+using Eco.Gameplay.GameActions;
 using Eco.Gameplay.Items;
 using Eco.Gameplay.Objects;
 using Eco.Gameplay.Occupancy;
+using Eco.Gameplay.Placement;
 using Eco.Gameplay.Skills;
 using Eco.Gameplay.Players;
 using Eco.World.Blocks;
@@ -11,12 +15,18 @@ using Eco.Minecarts.Runtime;
 using Eco.Minecarts.Track;
 using Eco.Shared.Localization;
 using Eco.Shared.Serialization;
+using Eco.Shared.IoC;
+using Eco.Shared.Items;
+using Eco.Shared.Math;
+using Eco.Shared.Voxel;
 
 [Serialized,RequireComponent(typeof(PropertyAuthComponent)),RequireComponent(typeof(CoasterRailComponent))]
 public abstract class CoasterRailObject : WorldObject,IRepresentsItem
 {
     [Serialized] public bool EntrySnapOwned {get;set;}
     [Serialized] public bool ExitSnapOwned {get;set;}
+    internal CoasterSnapOwnership SnapOwnership {get;}
+    protected CoasterRailObject(){SnapOwnership=new(this);}
     public System.Numerics.Vector3 RailOffset=>this is CoasterStationObject?-System.Numerics.Vector3.UnitX:CoasterPath.Find(PathKey).PlacementOffset;
     public string PathKey=>this is CoasterStationObject?"CoasterTrackStraightSection01":GetType().Name.Replace("Object","");
     public Type RepresentedItemType=>GetType().Assembly.GetType("Eco.Mods.TechTree."+GetType().Name.Replace("Object","Item"))!;
@@ -24,28 +34,13 @@ public abstract class CoasterRailObject : WorldObject,IRepresentsItem
     protected override void OnCreatePostInitialize()
     {
         base.OnCreatePostInitialize();
-        if(this is CoasterStationObject)return;
-        var ends=CoasterSnapHelpers.Ends(PathKey,Position,Rotation).ToArray();
-        for(var i=0;i<ends.Length;i++)
-        {
-            var (cell,type)=ends[i];
-            if(Eco.World.World.GetBlock(cell) is not Eco.World.Blocks.EmptyBlock)continue;
-            Eco.World.World.SetBlock(type,cell);
-            if(Eco.World.World.GetBlock(cell)?.GetType()==type)
-            {
-                if(i==0)EntrySnapOwned=true;else ExitSnapOwned=true;
-            }
-        }
+        SnapOwnership.Attach(create:true);
     }
     protected override void OnDestroy()
     {
         var cells=WorldOccupancy?.ToArray();var id=ObjectID;
-        var helpers=this is CoasterStationObject?[]:CoasterSnapHelpers.Ends(PathKey,Position,Rotation).ToArray();
-        var entryOwned=EntrySnapOwned;var exitOwned=ExitSnapOwned;
+        SnapOwnership.Detach(destroying:true);
         base.OnDestroy();
-        for(var i=0;i<helpers.Length;i++)
-            if((i==0?entryOwned:exitOwned)&&CoasterSnapHelpers.IsHelper(Eco.World.World.GetBlock(helpers[i].Cell)?.GetType()))
-                Eco.World.World.DeleteBlock(helpers[i].Cell);
         // Eco occasionally leaves transient occupancy after hammer pickup.
         // Delete only this object's own placeholder, never a replacement rail.
         if(cells!=null)foreach(var cell in cells)
@@ -109,9 +104,94 @@ public abstract class CoasterSpecialItem<T>:WorldObjectItem<T> where T:CoasterRa
         if(!CoasterSnapHelpers.Ends(key,pos,rotation).All(e=>Eco.World.World.GetBlock(e.Cell) is EmptyBlock))return false;
         return CoasterSpecialPlacement.IsSupported(key,pos,rotation);
     }
+    public override async Task PlacingObject(GameActionPack pack,Player player,ItemStack containingStack,System.Numerics.Vector3 pos,Eco.Shared.Math.Quaternion rotation)
+    {
+        await base.PlacingObject(pack,player,containingStack,pos,rotation);
+        CoasterSpecialPlacement.Prepare(pack,this,player.User,typeof(T).Name.Replace("Object",""),pos,rotation);
+    }
 }
 public static class CoasterSpecialPlacement
 {
+    private static readonly object CommitGate=new();
+    private static readonly Func<IPlaceableItem,System.Numerics.Vector3,Eco.Shared.Math.Quaternion,Result> NativePlacementCheck=BindPlacementCheck();
+    private static Func<IPlaceableItem,System.Numerics.Vector3,Eco.Shared.Math.Quaternion,Result> BindPlacementCheck()
+    {
+        // Eco 0.14.2 added an optional moving-object argument. Bind the
+        // installed native overload once while retaining 0.14.1 support.
+        var parameters=new[]{typeof(IPlaceableItem),typeof(System.Numerics.Vector3),typeof(Eco.Shared.Math.Quaternion),typeof(WorldObject)};
+        var legacy=typeof(WorldObjectPlacementUtils).GetMethod("IsValidPlacement",parameters);
+        if(legacy!=null)
+        {
+            var check=legacy.CreateDelegate<Func<IPlaceableItem,System.Numerics.Vector3,Eco.Shared.Math.Quaternion,WorldObject?,Result>>();
+            return (item,position,rotation)=>check(item,position,rotation,null);
+        }
+        var current=typeof(WorldObjectPlacementUtils).GetMethod("IsValidPlacement",parameters.Append(typeof(WorldObject)).ToArray())
+            ??throw new MissingMethodException("Eco has no supported native object placement validation overload.");
+        var currentCheck=current.CreateDelegate<Func<IPlaceableItem,System.Numerics.Vector3,Eco.Shared.Math.Quaternion,WorldObject?,WorldObject?,Result>>();
+        return (item,position,rotation)=>currentCheck(item,position,rotation,null,null);
+    }
+    internal static void Prepare(GameActionPack pack,IPlaceableItem item,User builder,string key,System.Numerics.Vector3 position,Eco.Shared.Math.Quaternion rotation)
+    {
+        // Native placement validates before the pack commits. Recheck live
+        // geometry and helper permissions in that same material transaction.
+        // Preserve Eco's user/action locker. The changeset owns only the
+        // short synchronous section-placement commit, never preparation/UI.
+        pack.GetOrCreateChangeSet(()=>new PlacementChecks()).Requests.Add((item,builder,key,position,rotation));
+    }
+    private sealed class PlacementChecks : IGameActionPackChangeSet
+    {
+        internal readonly List<(IPlaceableItem Item,User Builder,string Key,System.Numerics.Vector3 Position,Eco.Shared.Math.Quaternion Rotation)> Requests=[];
+        private bool held;
+        public bool NeedsDispose=>true;
+        public void GameActionPackDispose()
+        {
+            if(!held)return;
+            held=false;Monitor.Exit(CommitGate);
+        }
+        public LocString GameActionPackPostEffect()=>LocString.Empty;
+        public Result GameActionPackPretest()
+        {
+            // Native packs run pretests and post-effects synchronously. A
+            // competing commit can be retried without holding another lock
+            // while waiting. Dispose also releases on rejection/exception.
+            if(!held)
+            {
+                if(!Monitor.TryEnter(CommitGate))return Result.FailLocStr("Another coaster section is being placed. Try again in a moment.");
+                held=true;
+            }
+            HashSet<WrappedWorldPosition3i>? occupied=Requests.Count>1?new():null;
+            foreach(var request in Requests)
+            {
+                var valid=NativePlacementCheck(request.Item,request.Position,request.Rotation);
+                if(!valid)return valid;
+                // Native free placement can allow partial body occupancy. A
+                // complete rail needs its whole protected footprint, matching
+                // the existing blueprint policy, even after preparation.
+                foreach(var cell in WorldObject.GetOccupancyInfo(request.Item.WorldObjectType).GetBlockPositions(request.Position.XYZi(),request.Rotation))
+                {
+                    var block=Eco.World.World.GetBlock(cell);
+                    if(block is not EmptyBlock&&block is not IWaterBlock)
+                        return Result.FailLocStr("This rail section needs clear space for its full footprint.");
+                    if(occupied!=null&&!occupied.Add(cell))return Result.FailLocStr("Planned rail sections overlap the same construction cell.");
+                }
+                // Helpers are outside native object occupancy. Their plots
+                // still require the same full access as the rest of the rail.
+                foreach(var (cell,_) in CoasterSnapHelpers.Ends(request.Key,request.Position,request.Rotation))
+                {
+                    if(!WrappedWorldPosition3i.TryCreate(cell,out var wrapped))
+                        return Result.FailLocStr("The end of this rail section is outside the world height limits.");
+                    if(occupied!=null&&!occupied.Add(wrapped))return Result.FailLocStr("Planned rail sections overlap the same construction cell.");
+                    if(Eco.World.World.GetBlock(wrapped) is not EmptyBlock)
+                        return Result.FailLocStr("The end of this rail section is no longer clear.");
+                    var access=ServiceHolder<IAuthManager>.Obj.IsAuthorized(((Eco.Shared.Math.Vector3i)wrapped).XZ.ToPlotPos(),request.Builder,AccessType.FullAccess,null,out _);
+                    if(!access)return access.CreateResult();
+                }
+                if(!IsSupported(request.Key,request.Position,request.Rotation))
+                    return Result.FailLocStr("The rail section needs a real connected rail or grounded support before construction.");
+            }
+            return Result.Succeeded;
+        }
+    }
     public static bool IsSupported(string key,System.Numerics.Vector3 position,Eco.Shared.Math.Quaternion rotation)
     {
         var path=CoasterPath.Find(key);
@@ -176,6 +256,6 @@ public abstract class CoasterRailRecipe<T>:MinecartRailRecipeFamily where T:Item
         var boards=(int)Math.Ceiling(path.Length)+(station?4:0);
         var recipe=MinecartRailRecipes.Make<T>(key,bars,boards,fixedMaterials:true, skillType:typeof(IndustrySkill),metalType:typeof(SteelBarItem));
         recipe.DisplayName=Localizer.DoStr(CoasterNames.Name(key));
-        Configure(recipe,CoasterNames.Name(key),GetType(),bars*8,bars*.2f, skillType:typeof(IndustrySkill));
+        Configure(recipe,CoasterNames.Name(key),GetType(),bars*8,bars*.1f, skillType:typeof(IndustrySkill));
     }
 }

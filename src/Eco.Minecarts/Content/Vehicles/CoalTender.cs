@@ -18,7 +18,8 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-[Serialized] public sealed class CoalTenderObject : RollingStockObject
+[Serialized] [Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.BasicEngineeringSkill),3)]
+public sealed class CoalTenderObject : RollingStockObject
 {
     public static RailVehicleSpec DefaultSpecification {get;} = new("CoalTender", "Coal Tender", 480, 3000, 12, 2.0f, 1.0f, .5f, 30, 0, 0, 1800, 0, Tender: true, Model: "Tender");
     public override RailVehicleSpec RailSpec => RailVehicleBalances.Resolve(DefaultSpecification);
@@ -26,7 +27,7 @@ using Eco.Shared.Serialization;
     static CoalTenderObject() => AddOccupancy<CoalTenderObject>([]);
 }
 
-[LocDescription("Crafted at the Wainwright Table using Basic Engineering.")]
+[LocDescription("A fuel wagon that keeps a coupled locomotive supplied on longer journeys. Carries coal, charcoal, and other burnable fuel. Crafted at the Wainwright Table using Basic Engineering.")]
 [Serialized, LocDisplayName("Coal Tender"), Weight(15000)] public sealed class CoalTenderItem : RailModuleItem<CoalTenderObject> { }
 
 [RequiresSkill(typeof(BasicEngineeringSkill), 3)] public sealed class CoalTenderRecipe : RollingStockRecipe<CoalTenderItem> { }

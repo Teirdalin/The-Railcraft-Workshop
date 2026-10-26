@@ -11,7 +11,7 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
     public bool Mirrored => SwitchRadius>0 ? SwitchRoute<0 : Shape is "BendLeft" or "IndustrialBendLeft";
     private float BendCenter => SwitchRadius>0 ? SwitchRadius : Industrial ? 3.5f : Shape == "WideBend" ? 1.5f : .5f;
     public float Radius => SwitchRadius>0 ? (IsBend ? SwitchRadius : float.PositiveInfinity) : Industrial && IsBend ? 5.5f : this.Shape == "WideBend" ? 2.5f : this.Shape is "Bend" or "BendLeft" ? .5f : float.PositiveInfinity;
-    public double MaximumSupportedKg => this.Wooden ? 900 : double.PositiveInfinity;
+    public double MaximumSupportedKg => this.Wooden ? Eco.Minecarts.Physics.RailConstructionBalances.WoodenMaximumSupportedKg : double.PositiveInfinity;
     public static bool TryParse(string typeName, out VoxelTrackProfile profile)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/TryParse");
@@ -31,7 +31,7 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
         foreach (var degrees in new[] { 270, 180, 90 })
             if (shape.EndsWith(degrees.ToString(), StringComparison.Ordinal)) { turns = degrees / 90; shape = shape[..^degrees.ToString().Length]; break; }
         if (shape == "BendLeft" && !chain) return false;
-        if (shape is not ("Straight" or "Bend" or "BendLeft" or "Stopper" or "Crossing" or "Slope1" or "Slope2" or "Slope3" or "Slope4" or "RampTop" or "RampTop1" or "RampTop2" or "RampTop3" or "RampTop4")) return false;
+        if (!MineRailGradePath.TryFind(shape, out _) && shape is not ("Straight" or "Bend" or "BendLeft" or "Stopper" or "Crossing" or "Slope1" or "Slope2" or "Slope3" or "Slope4" or "RampTop" or "RampTop1" or "RampTop2" or "RampTop3" or "RampTop4")) return false;
         profile = new(shape, turns, chain, wooden, Tram:tram);
         return true;
     }
@@ -41,6 +41,7 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Point");
         t = Math.Clamp(t, 0, 1);
         if (Coaster) return Rotate(CoasterPath.Find(Shape).Point(t));
+        if (MineRailGradePath.TryFind(Shape, out var grade)) return Rotate(grade.Path.Point(t));
         Vector3 point;
         if (this.IsBend)
         {
@@ -63,9 +64,9 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
 
     private Vector3 Rotate(Vector3 vector) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Rotate"); return Vector3.Transform(vector, Quaternion.CreateFromAxisAngle(Vector3.UnitY, QuarterTurns * MathF.PI / 2)); }
     public Vector3 Up(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Up"); return Coaster ? Rotate(CoasterPath.Find(Shape).Up(t)) : Vector3.Normalize(Vector3.Cross(Tangent(t), Vector3.Cross(Vector3.UnitY, Tangent(t)))); }
-    public Vector3 Tangent(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Tangent"); return Coaster ? Rotate(CoasterPath.Find(Shape).Tangent(t)) : Vector3.Normalize(this.Point(Math.Min(.9999f, t) + .0001f) - this.Point(Math.Max(.0001f, t) - .0001f)); }
+    public Vector3 Tangent(float t) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Network/Geometry and discovery/Tangent"); return Coaster ? Rotate(CoasterPath.Find(Shape).Tangent(t)) : MineRailGradePath.TryFind(Shape, out var grade) ? Rotate(grade.Path.Tangent(t)) : Vector3.Normalize(this.Point(Math.Min(.9999f, t) + .0001f) - this.Point(Math.Max(.0001f, t) - .0001f)); }
     public float Curvature => float.IsPositiveInfinity(this.Radius) ? 0 : 1 / this.Radius;
-    public float Length => Coaster ? CoasterPath.Find(Shape).Length : this.Curvature > 0 ? MathF.PI / 2 * this.Radius : Vector3.Distance(this.Point(0), this.Point(1));
+    public float Length => Coaster ? CoasterPath.Find(Shape).Length : MineRailGradePath.TryFind(Shape, out var grade) ? grade.Path.Length : this.Curvature > 0 ? MathF.PI / 2 * this.Radius : Vector3.Distance(this.Point(0), this.Point(1));
 
     public (float T, Vector3 Point, float Distance) Nearest(Vector3 local)
     {
@@ -74,6 +75,11 @@ public readonly record struct VoxelTrackProfile(string Shape, int QuarterTurns, 
         {
             var p = CoasterPath.Find(Shape).Nearest(Vector3.Transform(local, Quaternion.CreateFromAxisAngle(Vector3.UnitY, -QuarterTurns * MathF.PI / 2)));
             return (p.T, Rotate(p.Point), p.Distance);
+        }
+        if (MineRailGradePath.TryFind(Shape, out var grade))
+        {
+            var nearest = grade.Path.Nearest(Vector3.Transform(local, Quaternion.CreateFromAxisAngle(Vector3.UnitY, -QuarterTurns * MathF.PI / 2)));
+            return (nearest.T, Rotate(nearest.Point), nearest.Distance);
         }
         if (!this.IsBend)
         {

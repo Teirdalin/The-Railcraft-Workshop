@@ -11,8 +11,12 @@ using Eco.Shared.Serialization;
 using Eco.Shared.SharedTypes;
 
 [Serialized, LocDisplayName("Electrical Tram Cable Drive"),
- LocDescription("Electrical version of the Tram Cable Drive. Connect to Tram Rail and an electrical grid. Supplies the same cable traction and tram speed as the mechanical version. Crafted at the Electric Machinist Table using Industry."), Weight(12000)]
-public sealed class ElectricalTramCableDriveItem : WorldObjectItem<ElectricalTramCableDriveObject> { }
+ LocDescription("An electric drive that supplies traction to trams through connected Tram Rail. Connect it to an electrical grid to power the line without carrying fuel aboard each tram. Crafted at the Electric Machinist Table using Industry."), Weight(12000)]
+public sealed class ElectricalTramCableDriveItem : WorldObjectItem<ElectricalTramCableDriveObject>
+{
+    protected override OccupancyContext GetOccupancyContext => new SideAttachedContext(
+        DirectionAxisFlags.Down, WorldObject.GetOccupancyInfo(WorldObjectType));
+}
 
 [Serialized]
 public sealed class ElectricalTramCableDriveObject : TramCableDriveObject
@@ -28,7 +32,7 @@ public sealed class ElectricalTramCableDriveObject : TramCableDriveObject
 public sealed class ElectricalTramCableDriveRecipe : MinecartRailRecipeFamily
 {
     public ElectricalTramCableDriveRecipe() => Configure(ElectricalDriveRecipes.Make<ElectricalTramCableDriveItem,TramCableDriveItem>(
-        "Electrical Tram Cable Drive"),"Electrical Tram Cable Drive",typeof(ElectricalTramCableDriveRecipe),200,6,typeof(IndustrySkill));
+        "Electrical Tram Cable Drive"),"Electrical Tram Cable Drive",typeof(ElectricalTramCableDriveRecipe),200,3,typeof(IndustrySkill));
 }
 
 internal static class ElectricalDriveRecipes
@@ -39,7 +43,7 @@ internal static class ElectricalDriveRecipes
         recipe.Init(name,Localizer.DoStr(name),[
             new IngredientElement(typeof(TDrive),1,true),
             new IngredientElement(typeof(ElectricMotorItem),1,true),
-            new IngredientElement(typeof(SteelBarItem),4,typeof(IndustrySkill)),
+            new IngredientElement(typeof(SteelBarItem),3,typeof(IndustrySkill)),
             new IngredientElement(typeof(BasicCircuitItem),2,typeof(IndustrySkill))],[],[new CraftingElement<T>()]);
         return recipe;
     }

@@ -19,6 +19,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, RequireComponent(typeof(HandcarDrivingComponent))]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.BasicEngineeringSkill),2)]
 public sealed class RailroadHandcarObject : RollingStockObject
 {
     public static RailVehicleSpec DefaultSpecification {get;} = new("RailroadHandcar", "Railroad Handcar", 180, 100, 4, 1.9f, 1.0f, .5f, 8, 450, 700, 2500, 900, Model: "Handcar");
@@ -27,7 +28,7 @@ public sealed class RailroadHandcarObject : RollingStockObject
     static RailroadHandcarObject() => AddOccupancy<RailroadHandcarObject>([]);
 }
 
-[Serialized, LocDisplayName("Railroad Handcar"), LocDescription("Human-powered rail platform with a pumping lever. Operate from the platform; light loads only. Uses calories, not fuel. Crafted at the Wainwright Table using Basic Engineering."), Weight(10000)]
+[Serialized, LocDisplayName("Railroad Handcar"), LocDescription("A small railway platform driven by a pumping lever. A useful way to travel with light supplies when muscle is more plentiful than fuel. Crafted at the Wainwright Table using Basic Engineering."), Weight(10000)]
 public sealed class RailroadHandcarItem : RailModuleItem<RailroadHandcarObject> { }
 
 [RequiresSkill(typeof(BasicEngineeringSkill), 2)] public sealed class RailroadHandcarRecipe : RollingStockRecipe<RailroadHandcarItem> { }

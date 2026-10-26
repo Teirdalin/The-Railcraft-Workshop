@@ -21,7 +21,7 @@ public class WoodenTrackBlock : Block, IRepresentsItem
 }
 
 [Serialized, LocDisplayName("Wooden Rail")]
-[LocDescription("Early wooden rail tier with the same gauge as Standard Rail. Supports up to 900 kg per vehicle; overload breaks the rail. Carry it and use a hammer for shapes. Best paired with the lightweight wooden cart.")]
+[LocDescription("Simple wooden rails for a light minecart and its first loads. Use a hammer to shape the track. Heavy vehicles and overloaded carts can splinter the rails.")]
 [MaxStackSize(20), Weight(1800), ResourcePile, Tag("Constructable"), Tier(1)]
 [Ecopedia("Blocks", "Building Materials", createAsSubPage: true)]
 public sealed class WoodenTrackItem : BlockItem<WoodenTrackBlock>
@@ -35,15 +35,16 @@ public sealed class WoodenTrackRecipe : RecipeFamily
 {
     public WoodenTrackRecipe()
     {
+        var budget=Eco.Minecarts.Physics.RailConstructionBalances.Find("WoodenTrack");
         var recipe = new Recipe();
         recipe.Init("WoodenTrack", Localizer.DoStr("Wooden Rail"),
-            [new IngredientElement("Wood", 4, true)], [],
-            [new CraftingElement<WoodenTrackItem>(4)]);
+            (budget?.Wood??4)>0?[new IngredientElement("Wood",budget?.Wood??4,true)]:[], [],
+            [new CraftingElement<WoodenTrackItem>(budget?.OutputCount??4)]);
         this.Recipes = [recipe]; this.ExperienceOnCraft = 1;
-        this.LaborInCalories = CreateLaborInCaloriesValue(80, typeof(LoggingSkill));
-        this.CraftMinutes = CreateCraftTimeValue(typeof(WoodenTrackRecipe), 1, typeof(LoggingSkill));
+        this.LaborInCalories = CreateLaborInCaloriesValue(budget?.LaborCalories??80, typeof(LoggingSkill));
+        this.CraftMinutes = CreateCraftTimeValue(typeof(WoodenTrackRecipe), budget?.CraftMinutes??.5f, typeof(LoggingSkill));
         this.Initialize(Localizer.DoStr("Wooden Rail"), typeof(WoodenTrackRecipe));
-        CraftingComponent.AddRecipe(typeof(RailcraftWorkbenchObject), this);
+        CraftingComponent.AddRecipe(typeof(CarpentryTableObject), this);
     }
 }
 
@@ -301,3 +302,4 @@ public sealed class WoodenTrackSlope4270Block : Block, IRepresentsItem, IWaterLo
 {
     public Type RepresentedItemType => typeof(WoodenTrackItem);
 }
+

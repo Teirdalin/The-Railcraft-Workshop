@@ -11,7 +11,7 @@ using Eco.Shared.Serialization;
 using Eco.Shared.SharedTypes;
 
 [Serialized, LocDisplayName("Electrical Rail Chain Drive"),
- LocDescription("Electric-powered chain lift. Connect beside chain rails, supply electrical power and choose 0.25x to 5x speed. Power demand scales with speed; insufficient power reduces speed or stops the lift. Use cart handbrakes to prevent rollback. Crafted at the Electric Machinist Table using Industry."), Weight(12000)]
+ LocDescription("An electric motor for lifting carts along connected chain rails. Connect electrical power and choose a lifting speed; the chain slows or stops when power is short. Cart handbrakes prevent rollback. Crafted at the Electric Machinist Table using Industry."), Weight(12000)]
 public sealed class ElectricalRailChainDriveItem : WorldObjectItem<ElectricalRailChainDriveObject>, IPersistentData
 {
     protected override OccupancyContext GetOccupancyContext => new SideAttachedContext(
@@ -33,5 +33,5 @@ public sealed class ElectricalRailChainDriveObject : MinecartChainDriveObject
 public sealed class ElectricalRailChainDriveRecipe : MinecartRailRecipeFamily
 {
     public ElectricalRailChainDriveRecipe() => Configure(ElectricalDriveRecipes.Make<ElectricalRailChainDriveItem,MinecartChainDriveItem>(
-        "Electrical Rail Chain Drive"),"Electrical Rail Chain Drive",typeof(ElectricalRailChainDriveRecipe),200,6,typeof(IndustrySkill));
+        "Electrical Rail Chain Drive"),"Electrical Rail Chain Drive",typeof(ElectricalRailChainDriveRecipe),200,3,typeof(IndustrySkill));
 }

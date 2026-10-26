@@ -47,5 +47,5 @@ public sealed class CoasterStationObject:CoasterRailObject
         StationFootprintVersion=1;SetDirty();
     }
 }
-[Serialized,LocDisplayName("Roller Coaster Station"),Weight(12000),Ecopedia("Blocks","Building Materials",createAsSubPage:true),LocDescription("A loading platform with built-in coaster rail. Holds carts for boarding and dispatches them when its departure conditions are met. Connect Roller Coaster Rail to both ends.")] public sealed class CoasterStationItem:WorldObjectItem<CoasterStationObject>{public override Eco.Shared.Localization.LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterStation"));}
+[Serialized,LocDisplayName("Roller Coaster Station"),Weight(12000),Ecopedia("Blocks","Building Materials",createAsSubPage:true),LocDescription("A boarding platform with built-in coaster rail. Holds carts while passengers board, then releases them when the departure conditions are met. Connect Roller Coaster Rail at both ends.")] public sealed class CoasterStationItem:WorldObjectItem<CoasterStationObject>{public override Eco.Shared.Localization.LocString DisplayName=>Localizer.DoStr(CoasterNames.Name("CoasterStation"));}
 [RequiresSkill(typeof(IndustrySkill),3)] public sealed class CoasterStationRecipe:CoasterRailRecipe<CoasterStationItem>{}

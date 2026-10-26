@@ -18,7 +18,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, LocDisplayName("Mine Train")]
-[LocDescription("A compact steam locomotive for Standard Rail. Add burnable fuel and operate the cab's throttle, brake and direction levers, or set a cruising speed on the Autopilot page. Crafted at the Wainwright Table using Basic Engineering.")]
+[LocDescription("A compact steam locomotive for hauling minecarts along Standard Rail. Burnable fuel keeps it running; the cab controls its speed, brakes, and direction. Crafted at the Wainwright Table using Basic Engineering.")]
 [Weight(15000), IconGroup("World Object Minimap")]
 [AirPollution(.1f)]
 [Ecopedia("Crafted Objects", "Vehicles", createAsSubPage: true)]
@@ -40,12 +40,12 @@ public sealed class MineTrainRecipe : MinecartRailRecipeFamily
     {
         var recipe = new Recipe();
         recipe.Init("MineTrain", Localizer.DoStr("Mine Train"),
-            [new IngredientElement(typeof(IronBarItem), 24, typeof(BasicEngineeringSkill)),
+            [new IngredientElement(typeof(IronPlateItem), 16, typeof(BasicEngineeringSkill)),
              new IngredientElement("WoodBoard", 12, typeof(BasicEngineeringSkill)),
              new IngredientElement(typeof(IronWheelItem), 4, true),
              new IngredientElement(typeof(CastIronStoveItem), 1, true),
              new IngredientElement(typeof(LubricantItem), 2, true)], [], [new CraftingElement<MineTrainItem>()]);
-        this.Configure(recipe, "Mine Train", typeof(MineTrainRecipe), 250, 10, skillType:typeof(BasicEngineeringSkill));
+        this.Configure(recipe, "Mine Train", typeof(MineTrainRecipe), 250, 5, skillType:typeof(BasicEngineeringSkill));
     }
 }
 
@@ -67,14 +67,16 @@ public sealed class MineTrainRecipe : MinecartRailRecipeFamily
 [RequireComponent(typeof(TrainControllerComponent))]
 [RequireComponent(typeof(TrainFareComponent))]
 [RequireComponent(typeof(RailConditionComponent))]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.BasicEngineeringSkill),3)]
 public sealed class MineTrainObject : RailVehicleObject, IRepresentsItem
 {
-    public static Eco.Minecarts.Physics.RailVehicleSpec DefaultSpecification {get;} = new("MineTrain", "Mine Train", 600, 250, 4, 1.86f, .82f, .5f, 30, 12000, 5500, 6000, 8000, Model: "Engine");
+    public static Eco.Minecarts.Physics.RailVehicleSpec DefaultSpecification {get;} = new("MineTrain", "Mine Train", 600, 250, 4, 1.86f, .82f, .5f, 30, 210000, 240000, 240000, 12000, Model: "Engine");
     public override Eco.Minecarts.Runtime.RailVehicleCapabilities Capabilities => Eco.Minecarts.Runtime.RailVehicleCapabilities.FueledMotor | Eco.Minecarts.Runtime.RailVehicleCapabilities.StationRouting;
     public override RailFuelConfiguration FuelConfiguration=>new(2,["Burnable Fuel"]);
 
     public override Eco.Minecarts.Physics.RailVehicleSpec RailSpec => Eco.Minecarts.Physics.RailVehicleSpec.MineTrain;
-    public override float CouplerOffset => .93f;
+    public override float CouplerOffset => 1.35f;
+    public override RailVehiclePoints ConnectionPoints=>new(new(0,.27f,.93f),new(0,.27f,-1.35f));
     public override double RailMassKg => this.RailSpec.EmptyKg;
     public override int DriverPriority => 100;
     public override System.Numerics.Vector3 ContactHalfSize => new(.43f, .78f, .90f);
@@ -98,3 +100,8 @@ public sealed class MineTrainObject : RailVehicleObject, IRepresentsItem
         this.GetComponent<VehicleComponent>().Initialize((float)this.RailSpec.MaximumSpeed, 1.5f, 2);
     }
 }
+
+
+
+
+

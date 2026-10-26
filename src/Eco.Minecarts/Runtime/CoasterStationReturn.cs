@@ -25,7 +25,7 @@ public sealed partial class CoasterStationComponent
     public void ReturnCartsToStation(Player player)
     {
         if(Parent.IsDestroyed||!Parent.IsAuthorized(player.User,AccessType.FullAccess)
-            ||Vector3.Distance(player.User.Position,Parent.Position)>6)return;
+            ||!RailWorldDistance.Within(player.User.Position,Parent.Position,6))return;
         TryReturnCarts(car=>car.IsAuthorized(player.User,AccessType.FullAccess),out var message);
         player.InfoBoxLocStr(message);
     }
@@ -42,6 +42,15 @@ public sealed partial class CoasterStationComponent
             {
                 if(Parent.IsDestroyed||!authorized(Parent)){result="Station access denied.";return false;}
                 if(ReturnedStations.ContainsKey(Parent.ObjectID)){result="Already used at this station; available after the next server restart.";return false;}
+                var revision=RailSimulationFrame.Revision;
+                var stationRail=Parent.GetComponent<CoasterRailComponent>().Rail;
+                if(!Monitor.TryEnter(gate))return false;
+                try
+                {
+                    if(!StationRailMatches(stationRail))
+                    {result="Station or loading track changed; try again when it is in place. The return is still available.";return false;}
+                }
+                finally{Monitor.Exit(gate);}
                 var cars=RailCouplingComponent.LiveVehicles.Where(c=>c.Vehicle.RailSpec.Coaster
                     &&c.Parent.GetComponent<MinecartMotionComponent>().CoasterHomeStation==Parent.ObjectID)
                     .OrderBy(c=>c.Parent.GetComponent<MinecartMotionComponent>().CoasterDepartureOrder).ThenBy(c=>c.Parent.ID).ToArray();
@@ -57,7 +66,6 @@ public sealed partial class CoasterStationComponent
                     if(cars.Any(c=>c.Parent.GetComponent<MountComponent>().IsMounted))
                     {result="Empty the coaster seats before returning carts.";return false;}
                     var plans=new List<ReturnPosition>();var visited=new HashSet<int>();
-                    var stationRail=Parent.GetComponent<CoasterRailComponent>().Rail;
                     var forward=stationRail.Profile.Tangent(.5f);var distance=0f;RailCouplingComponent? preceding=null;
                     foreach(var candidate in cars)
                     {
@@ -72,7 +80,7 @@ public sealed partial class CoasterStationComponent
                             if(distance>128){result="The return queue exceeds 128 metres; split it between stations.";return false;}
                             var target=stationRail.Point(.5f)-forward*distance;
                             var rail=stationRail;var seen=new HashSet<RailCell>();
-                            var d=Vector3.Dot(target-rail.Point(0),rail.Profile.Tangent(.5f));
+                            var d=Vector3.Dot(RailWorldDistance.Delta(target,rail.Point(0)),rail.Profile.Tangent(.5f));
                             while(d<0||d>rail.Profile.Length)
                             {
                                 if(!seen.Add(rail.Cell)||seen.Count>256||TrackWorld.NeighborForVehicle(rail,d<0?0:1) is not {} next)
@@ -80,20 +88,20 @@ public sealed partial class CoasterStationComponent
                                 rail=next.Rail;
                                 if(!LevelStraight(rail,forward)||At(rail.Cell) is {} other&&other!=this)
                                 {result="The return queue needs continuous straight, level rail behind this station.";return false;}
-                                d=Vector3.Dot(target-rail.Point(0),rail.Profile.Tangent(.5f));
+                                d=Vector3.Dot(RailWorldDistance.Delta(target,rail.Point(0)),rail.Profile.Tangent(.5f));
                             }
                             var t=d/rail.Profile.Length;
                             foreach(var sign in new[]{-1,1})
                             {
                                 var support=RailGuidance.Advance(rail,t,sign*(Vector3.Dot(rail.Profile.Tangent(t),forward)>0?1:-1)*(car.Vehicle.RailSpec.Wheelbase/2+.05f),TrackWorld.NeighborForVehicle);
-                                if(!LevelStraight(support.Rail,forward)||Vector3.Distance(support.Rail.Point(support.T),target+forward*sign*(car.Vehicle.RailSpec.Wheelbase/2+.05f))>.03f)
+                                if(!LevelStraight(support.Rail,forward)||!RailWorldDistance.Within(support.Rail.Point(support.T),target+forward*sign*(car.Vehicle.RailSpec.Wheelbase/2+.05f),.03f))
                                 {result="Both axles of every returned cart need continuous straight, level rail.";return false;}
                             }
                             var facing=firstFacing*first.FacingRelativeTo(car);
                             var rotation=Eco.Shared.Math.Quaternion.LookRotation(forward*facing);
                             var bounds=new VehicleBounds(target,new(rotation.x,rotation.y,rotation.z,rotation.w),car.Vehicle.ContactHalfSize);
                             if(RailCouplingComponent.LiveVehicles.Any(c=>!ids.Contains(c.Parent.ID)
-                                &&bounds.Overlaps(new(c.Parent.Position,new(c.Parent.Rotation.x,c.Parent.Rotation.y,c.Parent.Rotation.z,c.Parent.Rotation.w),c.Vehicle.ContactHalfSize))))
+                                &&bounds.Overlaps(c.BoundsNear(target))))
                             {result="Another vehicle blocks the return queue. Clear it and try again.";return false;}
                             if(!ReturnTrackClear(target,rotation))
                             {result="A solid block obstructs the return queue. Clear it and try again.";return false;}
@@ -105,6 +113,16 @@ public sealed partial class CoasterStationComponent
                     if(!Monitor.TryEnter(gate))return false;
                     try
                     {
+                        // Planning reads several rails. Recheck authorization,
+                        // attachment and the world revision before consuming the
+                        // one use or changing any cart/dispatch state. Lifecycle
+                        // callbacks take this gate too; a busy gate is a retry.
+                        if(!authorized(Parent)||cars.Any(c=>c.Parent.IsDestroyed||!authorized(c.Parent)))
+                        {result="Full access to the station and every returned cart is required. The return is still available.";return false;}
+                        if(cars.Any(c=>c.Parent.GetComponent<MountComponent>().IsMounted))
+                        {result="Empty the coaster seats before returning carts.";return false;}
+                        if(!StationRailMatches(stationRail)||revision!=RailSimulationFrame.Revision)
+                        {result="Station or loading track changed; try again when it is in place. The return is still available.";return false;}
                         if(!ReturnedStations.TryAdd(Parent.ObjectID,0))return false;
                         loadingCart=true;
                         foreach(var id in trains.Keys)ActiveStations.TryRemove(new KeyValuePair<Guid,CoasterStationComponent>(id,this));
@@ -126,6 +144,14 @@ public sealed partial class CoasterStationComponent
         }
         finally{loadingGate.Release();}
     }
+
+    // Caller holds the station gate. Check the registered rail's identity as
+    // well as geometry: a replacement at the same cell is a different station.
+    private bool StationRailMatches(VoxelRail rail)=>!destroyed&&!Parent.IsDestroyed
+        &&registeredCell is {} cell&&cell==RailPowerConnectionComponent.PhysicalCell(rail.Cell)
+        &&Stations.TryGetValue(cell,out var station)&&station==this
+        &&Parent.GetComponent<CoasterRailComponent>().Rail==rail
+        &&CoasterRailComponent.ObjectAt(rail.Cell)==Parent&&TrackWorld.Contains(rail);
 
     private static bool ReturnTrackClear(Vector3 position,Eco.Shared.Math.Quaternion rotation)
     {

@@ -117,8 +117,8 @@ public sealed class CoasterBlueprintComponent : WorldObjectComponent
         return new(q.X, q.Y, q.Z, q.W);
     }
     private bool CanEdit(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Blueprints/Editing and preview/CanEdit", this.Parent); return player != null && !Parent.IsDestroyed &&
-        Parent.IsAuthorized(player.User, AccessType.FullAccess) && NVector.Distance(player.User.Position, Parent.Position) <= 512; }
-    private bool AtStation(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Blueprints/Editing and preview/AtStation", this.Parent); return CanEdit(player) && NVector.Distance(player.User.Position, Parent.Position) <= 6; }
+        Parent.IsAuthorized(player.User, AccessType.FullAccess) && RailWorldDistance.Within(player.User.Position, Parent.Position, 512); }
+    private bool AtStation(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Blueprints/Editing and preview/AtStation", this.Parent); return CanEdit(player) && RailWorldDistance.Within(player.User.Position, Parent.Position, 6); }
 
     // Native UI property retrieval also covers opening the component page via
     // a remote station link. Publish never reads Layout, and the nonblocking
@@ -529,15 +529,39 @@ public sealed class CoasterBlueprintComponent : WorldObjectComponent
     }); }
     [RPC] public void LoadBlueprint(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Blueprints/Editing and preview/LoadBlueprint", this.Parent); StartDialog(player, async version =>
     {
-        var options = Editors.Values.Where(e => !e.Parent.IsDestroyed && e.Parent.IsAuthorized(player.User, AccessType.FullAccess)).SelectMany(e => e.ReadLibrary().Select(entry => (Station: e.Parent.DisplayName.ToString(), entry.Key, entry.Value))).Take(144).ToArray();
+        // Discover once per dialog, then page the immutable choices. Truncating
+        // the global library silently hid layouts on larger coaster networks.
+        var options = Editors.Values.Where(e => !e.Parent.IsDestroyed && e.Parent.IsAuthorized(player.User, AccessType.FullAccess))
+            .SelectMany(e => e.ReadLibrary().Select(entry => (Source: e, Station: e.Parent.DisplayName.ToString(), Position: e.Parent.Position3i, entry.Key, entry.Value)))
+            .OrderBy(o => o.Key, StringComparer.OrdinalIgnoreCase).ThenBy(o => o.Key, StringComparer.Ordinal)
+            .ThenBy(o => o.Station, StringComparer.OrdinalIgnoreCase).ThenBy(o => o.Source.Parent.ObjectID).ToArray();
         if (options.Length == 0) { player.InfoBoxLocStr("No saved layouts are available. Save a blueprint first."); return; }
-        var choice = await player.OptionBox(Localizer.DoStr("Load a saved layout at this station"), options.Select(o => $"{o.Key} ({o.Station})").ToList());
-        Action(player, () =>
+        var page = 0;
+        while (true)
         {
-            if (revision != version || HasBuiltTrack) { Status = "Start an empty plan to load a layout."; return; }
-            if (choice < 0 || choice >= options.Length) return;
-            LoadText(player, options[choice].Value);
-        }, false);
+            var entries = options.Skip(page * 32).Take(32)
+                .Select(o => (Label: $"{o.Key} ({o.Station}, {o.Position.X}, {o.Position.Y}, {o.Position.Z})", Option: o, Step: 0)).ToList();
+            if (page > 0) entries.Insert(0, ("< Previous page", default, -1));
+            if ((page + 1) * 32 < options.Length) entries.Add(("Next page >", default, 1));
+            var choice = await player.OptionBox(Localizer.DoStr($"Load a saved layout at this station — page {page + 1} of {(options.Length + 31) / 32}"), entries.Select(e => e.Label).ToList());
+            if (choice < 0 || choice >= entries.Count || !CanEdit(player)) return;
+            var entry = entries[choice];
+            if (entry.Step != 0) { page += entry.Step; continue; }
+            Action(player, () =>
+            {
+                if (revision != version) { Status = "Route changed; reopen saved layouts."; return; }
+                if (HasBuiltTrack) { Status = "Start an empty plan to load a layout."; return; }
+                var option = entry.Option;
+                // Access and saved contents can change while a menu is open.
+                // Apply only the layout the player actually chose from a source
+                // they can still use; never silently load a replacement.
+                if (option.Source.Parent.IsDestroyed || !option.Source.Parent.IsAuthorized(player.User, AccessType.FullAccess)
+                    || !option.Source.ReadLibrary().TryGetValue(option.Key, out var current) || current != option.Value)
+                { Status = "Saved layout or access changed; reopen saved layouts."; return; }
+                LoadText(player, option.Value);
+            }, false);
+            return;
+        }
     }); }
     private string CreateExportJson()
     {
@@ -783,9 +807,16 @@ public sealed class CoasterBlueprintComponent : WorldObjectComponent
         try
         {
             var n = Plan.Pieces.FirstOrDefault(n => n.Id == id);
-            if (n == null || n.Built) { player.InfoBoxLocStr("This planned piece has already been constructed or removed."); return; }
+            if (n == null) { player.InfoBoxLocStr("This planned piece has already been constructed or removed."); return; }
+            // A hammer pickup or another builder can change this rail before
+            // the next editor tick. The saved Built flag is only a snapshot.
+            var constructed = IsConstructed(n);
+            if (n.Built != constructed)
+            { Interlocked.Exchange(ref validationDirty, 1); Reconcile(); }
+            if (constructed) { player.InfoBoxLocStr("This planned piece has already been constructed or removed."); return; }
             var d = Definition(n); var pos = PositionOf(n); var rot = RotationOf(n);
-            var nearest = d.Path.Nearest(BlueprintPieceDefinition.Rotate(player.User.Position - pos + NVector.UnitY * .5f, -(StationTurns + n.Turns)) - d.PlacementOffset);
+            // Resolve the nearest world image before rotating into the rail's frame.
+            var nearest = d.Path.Nearest(BlueprintPieceDefinition.Rotate(RailWorldDistance.Delta(player.User.Position, pos) + NVector.UnitY * .5f, -(StationTurns + n.Turns)) - d.PlacementOffset);
             if (nearest.Distance > 6) { Status = "Walk within six metres of the planned rail to construct it."; player.InfoBoxLocStr(Status); return; }
             RefreshValidation(player);
             var check = validation[n.Id];
@@ -810,12 +841,25 @@ public sealed class CoasterBlueprintComponent : WorldObjectComponent
                 await WorldObjectPlacementUtils.TryPlaceWorldObjectNow(player, placeable, stack, pos, rot, 0);
             }
             Interlocked.Exchange(ref validationDirty,1);
-            Reconcile(); Status = IsConstructed(n) ? "Planned rail constructed. Its preview has been removed." : "Placement was rejected by Eco. Check the native message, supports, and building permissions.";
-            if (!IsConstructed(n)) player.InfoBoxLocStr(Status);
-            Publish();
+            constructed = IsConstructed(n);
+            Status = constructed ? "Planned rail constructed. Its preview has been removed." : "Placement was rejected by Eco. Check the native message, supports, and building permissions.";
+            if (!constructed) player.InfoBoxLocStr(Status);
         }
         catch (Exception e) { Eco.Shared.Logging.Log.WriteErrorLineLoc($"Blueprint construction failed: {e}"); Status = "Construction failed; the plan remains available. See the server log."; player.InfoBoxLocStr(Status); }
-        finally { Publish(); RefreshSelection(); gate.Release(); }
+        finally
+        {
+            try { RefreshSelection(); Publish(); }
+            catch (Exception e)
+            {
+                // Preview publication is separate from Eco's committed
+                // placement/material transaction. Retain progress and retry.
+                RequestReconcile();
+                Status = "Rail construction result retained; preview refresh failed. See the server log.";
+                Eco.Shared.Logging.Log.WriteErrorLineLoc($"Blueprint construction preview refresh failed: {e}");
+                Publish();
+            }
+            finally { gate.Release(); }
+        }
     }
     private void Publish()
     {

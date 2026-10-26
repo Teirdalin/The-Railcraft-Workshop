@@ -23,6 +23,14 @@ internal static class PoweredRailDrive
     }
     internal static bool ReadyExceptPower(PowerGridComponent grid)=>!grid.Parent.IsDestroyed &&
         grid.Parent.Components.All(c=>c==grid || c.Enabled && (c is not IOperatingWorldObjectComponent op || op.Operating));
+    // Caller owns the concrete drive's gate, after releasing connection state.
+    internal static void Stop(WorldObject drive)
+    {
+        drive.GetComponent<OnOffComponent>().On=false;
+        drive.GetComponent<PowerConsumptionComponent>().OverridePowerConsumption(0);
+        drive.SetAnimatedState(drive is Eco.Mods.TechTree.TramCableDriveObject?"CableRunning":"ChainRunning",false);
+        drive.GetComponent<ChainDriveSpeedComponent>()?.SetEffectiveSpeed(0);
+    }
 }
 
 internal sealed class PoweredRailRegistry<T> where T:WorldObject
@@ -46,6 +54,7 @@ internal sealed class PoweredRailContacts(double seconds)
     private readonly List<int> stale=[];
     private DateTime nextExpiry;
     internal int Count=>contacts.Count;
+    internal void Clear(){contacts.Clear();stale.Clear();nextExpiry=default;}
     internal int Touch(int id,DateTime now)
     {Expire(now);contacts[id]=now;return contacts.Count;}
     internal void Expire(DateTime now)

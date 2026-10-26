@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Numerics;
 using Eco.Core.Controller;
@@ -18,17 +19,36 @@ namespace Eco.Minecarts.Runtime;
 public sealed partial class RailCouplingComponent : WorldObjectComponent
 {
     private static readonly ConcurrentDictionary<int, RailCouplingComponent> Vehicles = new();
-    internal static RailCouplingComponent? NearestTo(Vector3 position, float radius) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/NearestTo"); return Vehicles.Values.Where(c=>!c.Parent.IsDestroyed && Vector3.DistanceSquared(c.Parent.Position,position)<=radius*radius)
-            .OrderBy(c=>Vector3.DistanceSquared(c.Parent.Position,position)).FirstOrDefault(); }
+    // Publish once on registry membership changes; collision, occupancy and nearest-car
+    // queries read live poses without copying ConcurrentDictionary.Values.
+    private static RailCouplingComponent[] switchVehicles=[];
+    internal static ReadOnlySpan<RailCouplingComponent> RegisteredVehicles=>Volatile.Read(ref switchVehicles);
+    internal static RailCouplingComponent? NearestTo(Vector3 position, float radius)
+    {
+        using var _railProfileScope = RailProfile.Measure("Vehicle Simulation/Coupling and consists/NearestTo");
+        RailCouplingComponent? nearest = null;
+        var bestDistance = radius * radius;
+        foreach (var car in Volatile.Read(ref switchVehicles))
+        {
+            if (car.Parent.IsDestroyed) continue;
+            var distance = RailWorldDistance.Squared(car.Parent.Position, position);
+            if (distance <= bestDistance && (nearest == null || distance < bestDistance))
+            {
+                nearest = car;
+                bestDistance = distance;
+            }
+        }
+        return nearest;
+    }
     private static readonly ConcurrentDictionary<Guid, RailCouplingComponent> PersistentVehicles = new();
     private static readonly object LinkGate = new();
     private static long topologyRevision;
     internal static long TopologyRevision=>Volatile.Read(ref topologyRevision);
-    private sealed record ConsistSnapshot(long Revision, RailCouplingComponent[] Members);
+    private sealed record ConsistSnapshot(long Revision, RailCouplingComponent[] Members, HashSet<int> MemberIds, int[] Parents, double MinOffset, double MaxOffset);
     private ConsistSnapshot? consist;
     private readonly object leaderCacheKey = new();
     private static void InvalidateConsists()
-    { Interlocked.Increment(ref topologyRevision); RailSimulationFrame.Invalidate(); }
+    { Interlocked.Increment(ref topologyRevision); RailSimulationFrame.InvalidateConsist(); }
     internal static RailCouplingComponent[] LiveVehicles=>Vehicles.Values.Where(c=>!c.Parent.IsDestroyed).ToArray();
     internal bool RearAvailable=>!this.HasPartner(-1);
     internal bool EndAvailable(int end) => !this.HasPartner(end);
@@ -52,9 +72,10 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/CoupleLoadedCart", this.Parent);
         lock(LinkGate)
         {
+            // Native placement can wrap the new cart before this link commits.
             if(Parent.IsDestroyed||added.Parent.IsDestroyed||!RearAvailable||added.Linked
                 ||!Vehicle.RailSpec.Coaster||!added.Vehicle.RailSpec.Coaster
-                ||Vector3.Distance(Connector(-1),added.Connector(1))>.3f)return false;
+                ||!RailWorldDistance.Within(Connector(-1),added.Connector(1),.3f))return false;
             SetPartner(-1,added.Parent.ID,1);added.SetPartner(1,Parent.ID,-1);
             return true;
         }
@@ -84,6 +105,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
     private bool HasPartner(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/HasPartner", this.Parent); return this.PartnerObjectId(end) != Guid.Empty || this.PartnerId(end) != 0; }
     private int PartnerId(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PartnerId", this.Parent); return end > 0 ? this.FrontPartnerId : this.RearPartnerId; }
     private int PartnerEnd(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PartnerEnd", this.Parent); return end > 0 ? this.FrontPartnerEnd : this.RearPartnerEnd; }
+    private static float CoupledSpacing(RailCouplingComponent parent,int parentEnd,RailCouplingComponent child,int childEnd) => Math.Abs(parent.Vehicle.ConnectionPoints.Coupler(parentEnd).Z)+Math.Abs(child.Vehicle.ConnectionPoints.Coupler(childEnd).Z)+.10f;
     public Vector3 Connector(int end) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Connector", this.Parent); return this.Parent.Position + this.Parent.Rotation.RotateVector(this.Vehicle.ConnectionPoints.Coupler(end)); }
     private void SetPartner(int end, int id, int otherEnd)
     {
@@ -113,9 +135,13 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/PostInitialize", this.Parent);
         base.PostInitialize();
-        Vehicles[this.Parent.ID] = this;
-        PersistentVehicles[this.Parent.ObjectID] = this;
-        InvalidateConsists();
+        lock(LinkGate)
+        {
+            Vehicles[this.Parent.ID] = this;
+            PersistentVehicles[this.Parent.ObjectID] = this;
+            Volatile.Write(ref switchVehicles,Vehicles.Values.ToArray());
+            InvalidateConsists();
+        }
         this.AwaitingLoad = this.Linked;
         if (this.AwaitingLoad) this.Vehicle.SetRailGuidance(true);
         this.Parent.SetAnimatedState("VehicleCollisionsEnabled", true);
@@ -135,7 +161,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
     public override void Destroy()
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Destroy", this.Parent);
-        lock (LinkGate) { this.Disconnect(1); this.Disconnect(-1); Vehicles.TryRemove(this.Parent.ID, out _); PersistentVehicles.TryRemove(this.Parent.ObjectID,out _); InvalidateConsists(); }
+        lock (LinkGate) { this.Disconnect(1); this.Disconnect(-1); Vehicles.TryRemove(this.Parent.ID, out _); PersistentVehicles.TryRemove(this.Parent.ObjectID,out _); Volatile.Write(ref switchVehicles,Vehicles.Values.ToArray()); InvalidateConsists(); }
         base.Destroy();
     }
     internal void ReconcileLoadedLinks(bool worldReady)
@@ -157,7 +183,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
                 var valid=partner!=null && partner.Vehicle.RailSpec.Industrial==this.Vehicle.RailSpec.Industrial && partner.Vehicle.RailSpec.Coaster==this.Vehicle.RailSpec.Coaster;
                 // Old saves cannot safely identify a distant car by a reused ID.
                 // Only migrate reciprocal, physically adjacent legacy connectors.
-                if(valid && legacy) valid=Vector3.Distance(this.Connector(end),partner!.Connector(this.PartnerEnd(end)))<=.75f;
+                if(valid && legacy) valid=RailWorldDistance.Within(this.Connector(end),partner!.Connector(this.PartnerEnd(end)),.75f);
                 if(valid)
                 {
                     var otherEnd=this.PartnerEnd(end);
@@ -198,19 +224,77 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
             var version = Volatile.Read(ref topologyRevision);
             cached = this.consist;
             if (cached?.Revision == version) return cached.Members;
-            var seen = new HashSet<int>(); var result = new List<RailCouplingComponent>();
-            void Visit(RailCouplingComponent node)
+            var seen = new HashSet<int>(); var result = new List<RailCouplingComponent>(); var parents = new List<int>();
+            var minimum = double.PositiveInfinity; var maximum = double.NegativeInfinity;
+            void Visit(RailCouplingComponent node, double offset, int orientation, int parent)
             {
                 if (!seen.Add(node.Parent.ID)) return;
-                result.Add(node);
+                var index=result.Count;result.Add(node);parents.Add(parent);
+                // The same signed arc spacing used by FollowTrain. Include half
+                // the drawbar gap at each end so a detector stays occupied
+                // between car centres, including backwards-facing members.
+                var rear = offset + orientation * node.Vehicle.ConnectionPoints.Coupler(-1).Z;
+                var front = offset + orientation * node.Vehicle.ConnectionPoints.Coupler(1).Z;
+                minimum = Math.Min(minimum, Math.Min(rear, front) - .05);
+                maximum = Math.Max(maximum, Math.Max(rear, front) + .05);
                 for (var end = -1; end <= 1; end += 2)
-                    if (node.Partner(end) is { } next && next.Vehicle.RailSpec.Industrial == this.Vehicle.RailSpec.Industrial && next.Vehicle.RailSpec.Coaster == this.Vehicle.RailSpec.Coaster) Visit(next);
+                    if (node.Partner(end) is { } next && next.Vehicle.RailSpec.Industrial == this.Vehicle.RailSpec.Industrial && next.Vehicle.RailSpec.Coaster == this.Vehicle.RailSpec.Coaster)
+                        Visit(next, offset + end * orientation * CoupledSpacing(node, end, next, node.PartnerEnd(end)),
+                            orientation * -end * node.PartnerEnd(end), index);
             }
-            Visit(this);
+            Visit(this, 0, 1, -1);
             var members = result.ToArray();
-            Volatile.Write(ref this.consist, new ConsistSnapshot(version, members));
+            Volatile.Write(ref this.consist, new ConsistSnapshot(version, members, seen, parents.ToArray(), minimum, maximum));
             return members;
         }
+    }
+    // Read live condition from the existing topology-stamped member array.
+    // Repairs must take effect immediately without caching mutable health.
+    internal bool RepairRequired
+    {
+        get
+        {
+            foreach (var member in Group())
+                if (!member.Parent.IsDestroyed && member.Parent.GetComponent<RailConditionComponent>()?.RepairRequired==true)
+                    return true;
+            return false;
+        }
+    }
+    internal double MaintenanceSpeedFactor
+    {
+        get
+        {
+            var factor=1d;
+            foreach(var member in Group())
+                if(!member.Parent.IsDestroyed)factor=Math.Min(factor,member.Parent.GetComponent<RailConditionComponent>()?.SpeedFactor??1);
+            return factor;
+        }
+    }
+    internal double ProjectedNose(Vector3 forward)
+    {
+        _ = Group();var snapshot=Volatile.Read(ref consist)!;
+        float[]? rented=null;
+        Span<float> offsets=snapshot.Members.Length<=64?stackalloc float[snapshot.Members.Length]
+            :(rented=ArrayPool<float>.Shared.Rent(snapshot.Members.Length));
+        try
+        {
+            var nose=double.NegativeInfinity;
+            for(var i=0;i<snapshot.Members.Length;i++)
+            {
+                var car=snapshot.Members[i];var parent=snapshot.Parents[i];
+                // Unfold adjacent couplings, rather than folding a long train
+                // against its owner. Keep live geometry and physical height.
+                offsets[i]=parent<0?0:offsets[parent]+Vector3.Dot(
+                    RailWorldDistance.Delta(car.Parent.Position,snapshot.Members[parent].Parent.Position),forward);
+                nose=Math.Max(nose,offsets[i]+car.Vehicle.CouplerOffset);
+            }
+            return nose;
+        }
+        finally{if(rented!=null)ArrayPool<float>.Shared.Return(rented);}
+    }
+    internal (double Min, double Max) StationSpan
+    {
+        get { _ = Group(); var snapshot = Volatile.Read(ref consist)!; return (snapshot.MinOffset, snapshot.MaxOffset); }
     }
     internal int FacingRelativeTo(RailCouplingComponent member)
     {
@@ -265,7 +349,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
                 if(car==member)return(offset,orientation);
                 foreach(var end in new[]{-1,1})
                     if(car.Partner(end) is {} next&&Find(next,
-                        offset+end*orientation*(car.Vehicle.CouplerOffset+next.Vehicle.CouplerOffset+.10f),
+                        offset+end*orientation*CoupledSpacing(car,end,next,car.PartnerEnd(end)),
                         orientation*-end*car.PartnerEnd(end)) is {} found)return found;
                 return null;
             }
@@ -299,11 +383,29 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
     }
     public bool IsFollower => this.Linked && this.Leader() != this;
     public bool CanBoard => !this.Group().Any(x => x.AwaitingLoad || x != this && (x.Parent.GetComponent<MountComponent>().Driver != null || x.Parent.GetComponent<MinecartMotionComponent>()?.ManualCart?.Holder!=null));
-    internal static bool OccupiesSwitch(VoxelRail rail,float radius,HashSet<int>? exclude=null){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/OccupiesSwitch"); return Vehicles.Values.Any(x=>!x.Parent.IsDestroyed
-        && (exclude==null || !exclude.Contains(x.Parent.ID))
-        && Math.Abs(x.Parent.Position.Y-rail.Point(0).Y)<2
-        && Math.Abs(x.Parent.Position.X-rail.Cell.X)<radius+x.Vehicle.CouplerOffset+.4f
-        && Math.Abs(x.Parent.Position.Z-rail.Cell.Z)<radius+x.Vehicle.CouplerOffset+.4f); }
+    internal bool OtherOccupiesSwitch(VoxelRail rail,float radius)
+    {
+        _ = Group();
+        // Group publishes an immutable ID set with its topology-stamped members.
+        // Reuse it on blocked trailing-entry retries; occupancy still reads live poses.
+        return OccupiesSwitch(rail,radius,Volatile.Read(ref consist)!.MemberIds);
+    }
+    internal static bool OccupiesSwitch(VoxelRail rail,float radius,HashSet<int>? exclude=null)
+    {
+        using var scope=RailProfile.Measure("Vehicle Simulation/Coupling and consists/OccupiesSwitch");
+        var size=Eco.World.World.VoxelSize;var height=rail.Point(0).Y;
+        foreach(var car in Volatile.Read(ref switchVehicles))
+        {
+            if(car.Parent.IsDestroyed || exclude?.Contains(car.Parent.ID)==true)continue;
+            var position=car.Parent.Position;
+            if(Math.Abs(position.Y-height)>=2)continue;
+            var dx=position.X-rail.Cell.X;var dz=position.Z-rail.Cell.Z;
+            dx-=MathF.Round(dx/size.X)*size.X;dz-=MathF.Round(dz/size.Z)*size.Z;
+            var clearance=radius+car.Vehicle.CouplerOffset+.4f;
+            if(Math.Abs(dx)<clearance && Math.Abs(dz)<clearance)return true;
+        }
+        return false;
+    }
     internal TrainLoad Load { get { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/RailCouplingComponent.Load.get", this.Parent); return new(this.Vehicle.RailSpec,
         this.Parent.GetComponent<Eco.Gameplay.Components.Storage.PublicStorageComponent>().Inventory.NonEmptyStacks.Sum(s => (double)s.Weight) / 1000,
         FuelMass(this.Parent),
@@ -355,7 +457,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
         var power=Vehicle.RailSpec.Coaster
             ?Eco.Mods.TechTree.MinecartChainDriveObject.CoasterLiftForConsist(cells,Parent.ID)
             :Eco.Mods.TechTree.MinecartChainDriveObject.LiftForConsist(cells,Parent.ID);
-        return (direction*ChainLift.Force(Performance.Mass,Math.Max(0,grade*direction),speed*direction,power.Watts,ChainLift.TargetSpeed(power.Multiplier,Vehicle.RailSpec.Coaster)),power.Multiplier);
+        return (direction*ChainLift.Force(Performance.Mass,Math.Max(0,grade*direction),speed*direction,power.Watts,ChainLift.TargetSpeed(power.Multiplier,Vehicle.RailSpec.Coaster),Vehicle.RailSpec.Coaster?15000:RailConstructionBalances.ChainTractionNewtons),power.Multiplier);
     }
     private sealed record GradeSample(float Value);
     internal float ConsistGrade(float rootGrade, int rootFacing)
@@ -410,10 +512,11 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
     public void Toggle(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Coupling and consists/Toggle", this.Parent);
+        if (player == null || Parent == null || Parent.IsDestroyed) return;
         if ((!target.TryGetParameter("RailCoupler", out var raw) && !target.TryGetParameter("MinecartHandle", out raw)
             && !target.TryGetParameter("CoasterEnd", out raw))
-            || !int.TryParse(raw?.ToString(), out var end) || Math.Abs(end) != 1
-            || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess) || Vector3.Distance(player.User.Position, this.Connector(end)) > 3) return;
+            || !int.TryParse(raw?.ToString(), out var end) || end is not (-1 or 1)
+            || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess) || !RailWorldDistance.Within(player.User.Position, this.Connector(end), 3)) return;
         RailCouplingComponent[] changed;
         lock (LinkGate)
         {
@@ -429,7 +532,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
                 if (group.Any(x => x.Parent.GetComponent<MountComponent>().Driver != null)) return;
                 var candidate = Vehicles.Values.Where(x => !x.Parent.IsDestroyed && !group.Contains(x)
                     && x.Vehicle.RailSpec.Industrial == this.Vehicle.RailSpec.Industrial && x.Vehicle.RailSpec.Coaster == this.Vehicle.RailSpec.Coaster)
-                    .SelectMany(x => new[] { -1, 1 }.Select(e => (Other: x, End: e, Distance: Vector3.Distance(this.Connector(end), x.Connector(e)))))
+                    .SelectMany(x => new[] { -1, 1 }.Select(e => (Other: x, End: e, Distance: MathF.Sqrt(RailWorldDistance.Squared(this.Connector(end), x.Connector(e))))))
                     .Where(x => x.Distance <= .45f && !x.Other.HasPartner(x.End) && x.Other.Parent.IsAuthorized(player.User, AccessType.FullAccess)
                         && Vector3.Dot(this.Parent.Rotation.RotateVector(Vector3.UnitZ) * end, x.Other.Parent.Rotation.RotateVector(Vector3.UnitZ) * x.End) < -.7f)
                     .OrderBy(x => x.Distance).FirstOrDefault();
@@ -443,13 +546,51 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
         foreach (var node in changed) node.Parent.GetComponent<MinecartMotionComponent>().ResetCoupledMotion();
     }
 
+    // Use the image nearest the query before rotating/testing the body. Guided
+    // poses can be continuous while parked/native poses have already wrapped.
+    internal VehicleBounds BoundsNear(Vector3 origin)
+        => new(origin + RailWorldDistance.Delta(this.Parent.Position, origin), ToQuaternion(this.Parent), this.Vehicle.ContactHalfSize);
+
     internal float ContactFraction(Vector3 from, Quaternion rotation, Vector3 to, Quaternion nextRotation)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Collision/ContactFraction", this.Parent);
-        var ids = this.Group().Select(x => x.Parent.ID).ToHashSet();
-        return VehicleBounds.TravelFraction(new(from, rotation, this.Vehicle.ContactHalfSize), new(to, nextRotation, this.Vehicle.ContactHalfSize),
-            Vehicles.Values.Where(x => !x.Parent.IsDestroyed && !ids.Contains(x.Parent.ID)).Select(x =>
-                new VehicleBounds(x.Parent.Position, ToQuaternion(x.Parent), x.Vehicle.ContactHalfSize)));
+        _ = this.Group();
+        // Group already built this ID set at the same topology revision. It is
+        // immutable after publication, just like the existing member array.
+        var ids = Volatile.Read(ref this.consist)!.MemberIds;
+        // A short step across a wrapped endpoint must not sweep the whole map.
+        to = from + RailWorldDistance.Delta(to, from);
+        var start = new VehicleBounds(from, rotation, this.Vehicle.ContactHalfSize);
+        var finish = new VehicleBounds(to, nextRotation, this.Vehicle.ContactHalfSize);
+        var radius = VehicleBounds.SweepRadius(start, finish);
+        var registered = Volatile.Read(ref switchVehicles);
+        Span<VehicleBounds> nearby = stackalloc VehicleBounds[16];
+        VehicleBounds[]? rented = null;
+        var count = 0;
+        try
+        {
+            foreach (var car in registered)
+            {
+                if (car.Parent.IsDestroyed || ids.Contains(car.Parent.ID)) continue;
+                var bounds = car.BoundsNear(from);
+                if (!bounds.NearSweep(from, radius)) continue;
+                if (count == nearby.Length)
+                {
+                    // Dense crossings can exceed the small stack buffer. The
+                    // registry snapshot bounds the required capacity; no pose
+                    // survives this query, and no vehicle is silently dropped.
+                    rented = ArrayPool<VehicleBounds>.Shared.Rent(registered.Length);
+                    nearby.CopyTo(rented);
+                    nearby = rented;
+                }
+                nearby[count++] = bounds;
+            }
+            return VehicleBounds.TravelFractionNearby(start, finish, nearby[..count]);
+        }
+        finally
+        {
+            if (rented != null) ArrayPool<VehicleBounds>.Shared.Return(rented);
+        }
     }
     internal void BreakConnections()
     {
@@ -508,7 +649,13 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
             var q = motion.RailRotation(next.Rail, next.T,
                 RailGuidance.AxleTangent(next.Rail, next.T, motion.NextRail, halfWheelbase) * facing * nextOrientation);
             var bufferFraction = Math.Abs(memberTravel) > .000001 ? Math.Abs(allowed / memberTravel) : 1;
-            fraction = Math.Min(fraction, bufferFraction * node.ContactFraction(from, ToQuaternion(node.Parent), to, new(q.x, q.y, q.z, q.w)));
+            var contactFraction = node.ContactFraction(from, ToQuaternion(node.Parent), to, new(q.x, q.y, q.z, q.w));
+            // The accepted fraction is applied through a float rail parameter,
+            // not the sweep's interpolated pose. Retain a millimetre at limited
+            // contact so that rounding cannot cross its touching boundary.
+            if (contactFraction < 1 && Math.Abs(allowed) > .000001)
+                contactFraction = (float)Math.Max(0, contactFraction - .001 / Math.Abs(allowed));
+            fraction = Math.Min(fraction, bufferFraction * contactFraction);
         }
         return travel * fraction;
     }
@@ -540,7 +687,7 @@ public sealed partial class RailCouplingComponent : WorldObjectComponent
                 var child = parent.Partner(end);
                 if (child == null || !seen.Add(child.Parent.ID)) continue;
                 var childEnd = parent.PartnerEnd(end);
-                var spacing = parent.Vehicle.CouplerOffset + child.Vehicle.CouplerOffset + .10f;
+                var spacing = CoupledSpacing(parent,end,child,childEnd);
                 var distance = end * orientation * spacing;
                 var cursor=RailPathCursor.Travel(at,parameter,distance,motion.NextRail);
                 if(cursor.Remaining!=0)

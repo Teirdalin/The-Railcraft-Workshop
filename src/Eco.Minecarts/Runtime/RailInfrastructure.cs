@@ -10,15 +10,23 @@ internal static class RailInfrastructure
 {
     private static readonly ConcurrentDictionary<RailCell, WorldObject> WideTurns = new();
     private static readonly object BreakGate = new();
-    private static RailCell Cell(WorldObject obj) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Cell"); return new(obj.Position3i.X, obj.Position3i.Y, obj.Position3i.Z); }
-    internal static void Register(WorldObject obj) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Register"); WideTurns[Cell(obj)] = obj; RailSimulationFrame.Invalidate(); }
-    internal static void Remove(WorldObject obj)
+    internal static RailCell Register(WorldObject obj)
     {
-        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Remove"); RailPowerConnectionComponent.RailRemoved(Cell(obj)); WideTurns.TryRemove(new KeyValuePair<RailCell,WorldObject>(Cell(obj),obj)); RailSimulationFrame.Invalidate(); }
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Register");
+        var cell=RailPowerConnectionComponent.PhysicalCell(new(obj.Position3i.X,obj.Position3i.Y,obj.Position3i.Z));
+        WideTurns[cell]=obj; RailSimulationFrame.Invalidate(); return cell;
+    }
+    // Remove by the captured registration, even after the object has moved.
+    // A predecessor must never remove a replacement at the same anchor.
+    internal static bool Remove(WorldObject obj,RailCell cell)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Remove");
+        return WideTurns.TryRemove(new KeyValuePair<RailCell,WorldObject>(cell,obj));
+    }
     internal static VoxelRail? TryRead(RailCell cell)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/TryRead");
-        if (!WideTurns.TryGetValue(cell, out var obj) || obj.IsDestroyed) return null;
+        if (!WideTurns.TryGetValue(RailPowerConnectionComponent.PhysicalCell(cell), out var obj) || obj.IsDestroyed) return null;
         var forward = obj.Rotation.RotateVector(System.Numerics.Vector3.UnitZ);
         var turns = ((int)Math.Round(Math.Atan2(forward.X, forward.Z) / (Math.PI / 2)) + 4) % 4;
         return new VoxelRail(cell, new("WideBend", turns, false,Tram:obj is TramWideRailTurnObject));

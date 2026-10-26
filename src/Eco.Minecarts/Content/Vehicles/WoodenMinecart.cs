@@ -19,16 +19,17 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, RequireComponent(typeof(MinecartRidingComponent))]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.BasicEngineeringSkill),1)]
 public sealed class WoodenMinecartObject : RollingStockObject
 {
-    public static RailVehicleSpec DefaultSpecification {get;} = new("WoodenMinecart", "Wooden Minecart", 80, 400, 8, 1.612f, .82f, .5f, 12, 0, 0, 1300, 0, Pullable: true, DurabilityHours: 40, Model: "Wood", Tier: "Wood");
+    public static RailVehicleSpec DefaultSpecification {get;} = new("WoodenMinecart", "Wooden Minecart", 80, 800, 8, 1.612f, .82f, .5f, 12, 0, 0, 1300, 0, Pullable: true, DurabilityHours: 40, Model: "Wood", Tier: "Wood");
     public override RailVehicleSpec RailSpec => RailVehicleBalances.Resolve(DefaultSpecification);
     public override RailVehicleCapabilities Capabilities => RailVehicleCapabilities.ManualHandle;
     public override System.Numerics.Vector3 ContactHalfSize => new(.40f,.40f,.80f);
     static WoodenMinecartObject() => AddOccupancy<WoodenMinecartObject>([]);
 }
 
-[LocDescription("Crafted at the Wainwright Table using Basic Engineering.")]
+[LocDescription("A light wooden cart for bringing the first loads out of a mine. Holds larger stacks of mined materials, but heavy loads can break wooden rails. Crafted at the Wainwright Table using Basic Engineering.")]
 [Serialized, LocDisplayName("Wooden Minecart"), Weight(10000)] public sealed class WoodenMinecartItem : RailModuleItem<WoodenMinecartObject> { }
 
 [RequiresSkill(typeof(BasicEngineeringSkill), 1)] public sealed class WoodenMinecartRecipe : RollingStockRecipe<WoodenMinecartItem> { }

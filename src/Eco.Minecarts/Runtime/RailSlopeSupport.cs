@@ -5,6 +5,7 @@ using Eco.Shared.Math;
 using Eco.Gameplay.Items;
 using Eco.World.Blocks;
 using System.Reflection;
+using System.Collections.Concurrent;
 
 namespace Eco.Minecarts.Runtime;
 
@@ -12,6 +13,8 @@ namespace Eco.Minecarts.Runtime;
 public sealed class RailSlopeSupport : IModInit
 {
     private static int subscribed;
+    private readonly record struct SlopeType(bool Valid,Type? Normal,string Prefix);
+    private static readonly ConcurrentDictionary<Type,SlopeType> SlopeTypes = new();
     public static void PostInitialize()
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/PostInitialize");
@@ -44,18 +47,25 @@ public sealed class RailSlopeSupport : IModInit
     public static Type? NormalVersion(Type type)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/NormalVersion");
-        if (!VoxelTrackProfile.TryParse(type.Name, out var rail) || !IsSlope(rail)) return null;
+        return SlopeTypes.GetOrAdd(type,static t=>Describe(t)).Normal;
+    }
+
+    private static SlopeType Describe(Type type)
+    {
+        // Only immutable names and assembly lookups are cached. Ramp forms and
+        // live support blocks are still resolved when the terrain event occurs.
+        if (!VoxelTrackProfile.TryParse(type.Name, out var rail) || !IsSlope(rail)) return new(false,null,"");
         var prefix = rail.Wooden ? "WoodenTrack" : rail.Chain ? "MinecartChain" : rail.Tram ? "TramTrack" : "MinecartTrack";
         var rotation = rail.QuarterTurns == 0 ? "" : (rail.QuarterTurns * 90).ToString();
         var phase=rail.Shape=="RampTop" ? "1" : rail.Shape[(rail.Shape.StartsWith("RampTop",StringComparison.Ordinal) ? 7 : 5)..];
-        return type.Assembly.GetType("Eco.Mods.TechTree." + prefix + "Slope" + phase + rotation + "Block");
+        return new(true,type.Assembly.GetType("Eco.Mods.TechTree." + prefix + "Slope" + phase + rotation + "Block"),prefix);
     }
 
     public static Type? OverlayVersion(Type railType, Type supportType)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/OverlayVersion");
-        if (!VoxelTrackProfile.TryParse(railType.Name,out var rail) || !IsSlope(rail)
-            || VoxelTrackProfile.TryParse(supportType.Name,out _)) return null;
+        var slope=SlopeTypes.GetOrAdd(railType,static t=>Describe(t));
+        if (!slope.Valid || VoxelTrackProfile.TryParse(supportType.Name,out _)) return null;
         var form=BlockFormManager.GetFormForBlock(supportType);
         var phase=form?.FormType.Name switch { "RampA"=>"1", "RampB"=>"2", "RampC"=>"3", "RampD"=>"4", "Ramp"=>"", _=>null };
         var index=form==null ? -1 : Array.IndexOf(form.BlockTypes,supportType);
@@ -73,8 +83,7 @@ public sealed class RailSlopeSupport : IModInit
             if(turns<0) return null;
             phase=(index+1).ToString();
         }
-        var prefix=rail.Wooden ? "WoodenTrack" : rail.Chain ? "MinecartChain" : rail.Tram ? "TramTrack" : "MinecartTrack";
-        return railType.Assembly.GetType("Eco.Mods.TechTree."+prefix+"RampTop"+phase+(turns==0 ? "" : (turns*90).ToString())+"Block");
+        return railType.Assembly.GetType("Eco.Mods.TechTree."+slope.Prefix+"RampTop"+phase+(turns==0 ? "" : (turns*90).ToString())+"Block");
     }
 
     public static Type PlacementVersion(Type railType, Type supportType) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/PlacementVersion"); return OverlayVersion(railType,supportType) ?? NormalVersion(railType) ?? railType; }

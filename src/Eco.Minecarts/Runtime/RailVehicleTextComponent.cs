@@ -16,10 +16,20 @@ public sealed class RailVehicleTextComponent : WorldObjectComponent
         if(NightLights(hour))return true;
         // Native cached columns include terrain and constructed roofs. Sample
         // above the cab itself so its roof does not trigger its own lights.
+        ReadOnlySpan<(int X,int Z)> offsets=[(0,0),(-1,0),(1,0),(0,-1),(0,1)];
+        var x=(int)MathF.Round(position.X);
+        var z=(int)MathF.Round(position.Z);
         var covered=0;
-        foreach(var offset in new[]{(0,0),(-1,0),(1,0),(0,-1),(0,1)})
-            if(topSolid(new((int)MathF.Round(position.X)+offset.Item1,(int)MathF.Round(position.Z)+offset.Item2))>=position.Y+3.5f)covered++;
-        return covered>=3;
+        for(var i=0;i<offsets.Length;i++)
+        {
+            var offset=offsets[i];
+            if(topSolid(new(x+offset.X,z+offset.Z))>=position.Y+3.5f)covered++;
+            // Three covered or three uncovered samples settle the same
+            // five-column majority without reading the remaining columns.
+            if(covered>=3)return true;
+            if(covered+offsets.Length-i-1<3)return false;
+        }
+        return false;
     }
     public override void PostInitialize() {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Network/Text updates/PostInitialize", this.Parent); base.PostInitialize(); Refresh(); }

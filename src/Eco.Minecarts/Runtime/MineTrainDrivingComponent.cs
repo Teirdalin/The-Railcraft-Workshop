@@ -122,8 +122,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     private void ToggleAutodrive(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/ToggleAutodrive", this.Parent);
-        if (player == null || this.Parent.IsDestroyed
-            || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
+        if (player == null || this.Parent.IsDestroyed) return;
         var controller = this.Parent.GetComponent<TrainControllerComponent>();
         controller.SetAutopilot(player, !controller.Autopilot);
     }
@@ -133,9 +132,9 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     public void Drive(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Drive", this.Parent);
-        if (this.Parent.IsDestroyed || !target.ContainsParameter("MineTrainCab")
+        if (player == null || this.Parent == null || this.Parent.IsDestroyed || !target.ContainsParameter("MineTrainCab")
             || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess)
-            || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
+            || !RailWorldDistance.Within(player.User.Position, this.Parent.Position, 3)) return;
         Parent.OpenUI(player);
     }
 
@@ -145,13 +144,13 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     private bool CanOccupyCab(Player player)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/CanOccupyCab", this.Parent);
-        if(player==null || Parent.IsDestroyed || !player.User.IsOnline
+        if(player==null || Parent==null || Parent.IsDestroyed || !player.User.IsOnline
             || !Parent.IsAuthorized(player.User,AccessType.FullAccess)) return false;
         var mounts=Parent.GetComponent<MountComponent>();
         if(mounts.MountedPlayers.Contains(player)) return mounts.Driver!=player;
         if(player.MountManager.IsMounted) return false;
         var r=Parent.Rotation;
-        var local=Vector3.Transform(player.User.Position-Parent.Position,Quaternion.Inverse(new Quaternion(r.x,r.y,r.z,r.w)));
+        var local=Vector3.Transform(RailWorldDistance.Delta(player.User.Position,Parent.Position),Quaternion.Inverse(new Quaternion(r.x,r.y,r.z,r.w)));
         var spec=((RailVehicleObject)Parent).RailSpec;
         return Physics.StandingCab.Contains(spec,local);
     }
@@ -224,8 +223,8 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     private void BoardCab(Player player,InteractionTarget target,string key,int seat,AccessType access)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/BoardCab", this.Parent);
-        if(player==null || Parent.IsDestroyed || !target.ContainsParameter(key) || !Parent.IsAuthorized(player.User,access)
-            || Vector3.Distance(player.User.Position,Parent.Position)>3) return;
+        if(player==null || Parent==null || Parent.IsDestroyed || !target.ContainsParameter(key) || !Parent.IsAuthorized(player.User,access)
+            || !RailWorldDistance.Within(player.User.Position,Parent.Position,3)) return;
         var mounts=Parent.GetComponent<MountComponent>();
         if(mounts.MountedPlayers.Contains(player)){ReleaseControls(player);return;}
         if(player.MountManager.IsMounted || Parent.GetComponent<RailCouplingComponent>()?.CanBoard==false) return;
@@ -283,7 +282,7 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/PutFuel", this.Parent);
         if (player == null || this.Parent.IsDestroyed || !target.ContainsParameter("MineTrainBoiler")
             || !this.Parent.IsAuthorized(player.User, AccessType.ConsumerAccess)
-            || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
+            || !RailWorldDistance.Within(player.User.Position, this.Parent.Position, 3)) return;
         var fuel = this.Parent.GetComponent<FuelSupplyComponent>();
         if (fuel != null && fuel.CanPutIntoFuelTank(player.User)) fuel.PutItem(player, trigger, target);
     }
@@ -293,8 +292,8 @@ public sealed class MineTrainDrivingComponent : WorldObjectComponent
     public void OpenBoiler(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/OpenBoiler", this.Parent);
-        if (target.ContainsParameter("MineTrainBoiler") && !this.Parent.IsDestroyed
+        if (player != null && target.ContainsParameter("MineTrainBoiler") && !this.Parent.IsDestroyed
             && this.Parent.IsAuthorized(player.User, AccessType.ConsumerAccess)
-            && Vector3.Distance(player.User.Position, this.Parent.Position) <= 3) this.Parent.OpenUI(player);
+            && RailWorldDistance.Within(player.User.Position, this.Parent.Position, 3)) this.Parent.OpenUI(player);
     }
 }

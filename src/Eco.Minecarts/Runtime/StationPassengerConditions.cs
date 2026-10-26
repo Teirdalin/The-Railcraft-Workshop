@@ -51,6 +51,10 @@ public sealed class StationPassengerMatchCondition : GameValue<bool>
     {
         if(action is not StationDepartureContext context || !context.TrainAtStation || context.Passengers.Count==0)
             return Eval.MakeFailLoc<bool>($"There are no passengers aboard this train.");
+        // Boarding can change after the native seat snapshot, before its
+        // players are resolved. Never match a partially observed train.
+        if(context.OccupiedPassengerSeats>context.Passengers.Count)
+            return Eval.MakeFailLoc<bool>($"Passenger information required by these conditions is unavailable.");
         if(!Enum.IsDefined(Match) || !StationPassengerConditions.Valid(Condition))
             return Eval.MakeFailLoc<bool>($"Choose valid passenger conditions.");
         GameValue<bool> bound;
@@ -121,8 +125,8 @@ internal static class StationPassengerConditions
         {
             if(value==null)return true;
             if(depth>12 || ++count>128 || !seen.Add(value))return false;
-            if(value is SetOfConditions {List.Count:0})return false;
-            if(value is StationRuleValue or StationTrainValue or StationPassengerMatchCondition)return false;
+            if(value is SetOfConditions set && (set.List==null || set.List.Count==0 || !Enum.IsDefined(set.Comparison)))return false;
+            if(value is StationRuleValue or StationTrainValue or StationPassengerMatchCondition or StationTrainPresentCondition)return false;
             if(value is GameValue game)
             {
                 if(game is not StationPassengerUserValue and not StationPassengerAliasValue
@@ -139,6 +143,29 @@ internal static class StationPassengerConditions
         }
         return Visit(condition,0);
     }
+    // Validate the submitted shape before either the native clone serializer
+    // or our normalizer walks it. Final validation alone is too late for a
+    // cyclic/oversized editor response. Raw native passenger leaves remain valid.
+    internal static bool CanNormalize(GameValue<bool>? value)
+    {
+        if(value==null)return true;
+        var seen=new HashSet<GameValue<bool>>(ReferenceEqualityComparer.Instance);var count=0;
+        bool Visit(GameValue<bool>? node,int depth)
+        {
+            if(node==null||depth>8||++count>64||!seen.Add(node))return false;
+            var valid=node switch
+            {
+                StationRuleValue or StationTrainValue or StationTrainPresentCondition or StationTrainIncomingCondition or Yes or No=>true,
+                GameValueContext<bool> context when context.Name==nameof(StationDepartureContext.TrainAtStation)=>true,
+                StationPassengerMatchCondition passenger=>Enum.IsDefined(passenger.Match)&&Valid(passenger.Condition),
+                Not not=>not.NotValue==null||Visit(not.NotValue,depth+1),
+                SetOfConditions set=>Enum.IsDefined(set.Comparison)&&set.List!=null&&set.List.All(child=>Visit(child,depth+1)),
+                _=>Valid(node)
+            };
+            seen.Remove(node);return valid;
+        }
+        return Visit(value,0);
+    }
     internal static GameValue<bool>? Normalize(GameValue<bool>? value)
     {
         if(value==null)return null;
@@ -147,7 +174,7 @@ internal static class StationPassengerConditions
         {
             SetOfConditions set=>NormalizeSet(set),
             Not not=>new Not{NotValue=not.NotValue==null?new SetOfConditions():Walk(not.NotValue)},
-            StationRuleValue or StationTrainValue or Yes or No=>node,
+            StationRuleValue or StationTrainValue or StationTrainPresentCondition or StationTrainIncomingCondition or Yes or No=>node,
             GameValueContext<bool> context when context.Name==nameof(StationDepartureContext.TrainAtStation)=>node,
             StationPassengerMatchCondition passenger=>Bind(passenger),
             _=>Bind(new StationPassengerMatchCondition{Condition=node})

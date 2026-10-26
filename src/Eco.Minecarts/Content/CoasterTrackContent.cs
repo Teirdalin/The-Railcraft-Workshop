@@ -19,15 +19,19 @@ public class CoasterTrackBlock:Block,IRepresentsItem
 // placed shape to Eco's hammer. They are not extra free rail segments and are
 // removed with their owning shape.
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
-public sealed class CoasterTrackSnapEndBlock:Block,IWaterLoggedBlock{}
+public sealed class CoasterTrackSnapEndBlock:Block,IWaterLoggedBlock,IDestroyAwareBlock
+{public void Destroyed(Eco.Shared.Math.Vector3i worldPosition,Block replacement)=>Eco.Minecarts.Runtime.CoasterSnapOwnership.Replaced(worldPosition);}
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
-public sealed class CoasterTrackSnapEndR90Block:Block,IWaterLoggedBlock{}
+public sealed class CoasterTrackSnapEndR90Block:Block,IWaterLoggedBlock,IDestroyAwareBlock
+{public void Destroyed(Eco.Shared.Math.Vector3i worldPosition,Block replacement)=>Eco.Minecarts.Runtime.CoasterSnapOwnership.Replaced(worldPosition);}
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
-public sealed class CoasterTrackSnapEndR180Block:Block,IWaterLoggedBlock{}
+public sealed class CoasterTrackSnapEndR180Block:Block,IWaterLoggedBlock,IDestroyAwareBlock
+{public void Destroyed(Eco.Shared.Math.Vector3i worldPosition,Block replacement)=>Eco.Minecarts.Runtime.CoasterSnapOwnership.Replaced(worldPosition);}
 [Serialized,Constructed,Solid,BlockTier(1),Tag("Constructable")]
-public sealed class CoasterTrackSnapEndR270Block:Block,IWaterLoggedBlock{}
+public sealed class CoasterTrackSnapEndR270Block:Block,IWaterLoggedBlock,IDestroyAwareBlock
+{public void Destroyed(Eco.Shared.Math.Vector3i worldPosition,Block replacement)=>Eco.Minecarts.Runtime.CoasterSnapOwnership.Replaced(worldPosition);}
 [Serialized,LocDisplayName("Roller Coaster Rail"),
- LocDescription("Hammer-build flat rails, sharp corners, four-part slopes, two-part steep slopes and 45Â° grades with smooth bottom and crest transitions. Building a numbered slope in a line selects its next part and changes height after the last part. Complete loops, banks and large bends are crafted separately at the Railworks Workbench. Chain rails require an active Rail Chain Drive."),
+ LocDescription("Steel rails that hold coaster carts through curves, slopes, and steep descents. Use a hammer to choose each shape and follow the numbered parts of longer slopes. Chain sections need a powered Rail Chain Drive; complete loops and banked bends are crafted separately."),
  MaxStackSize(20),Weight(1800),ResourcePile,Tag("Constructable"),Tier(1),Ecopedia("Blocks","Building Materials",createAsSubPage:true)]
 public sealed class CoasterTrackItem:BlockItem<CoasterTrackBlock>
 {
@@ -36,7 +40,7 @@ public sealed class CoasterTrackItem:BlockItem<CoasterTrackBlock>
 }
 [RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class CoasterTrackRecipe:MinecartRailRecipeFamily
-{public CoasterTrackRecipe()=>Configure(MinecartRailRecipes.Make<CoasterTrackItem>("CoasterTrack",3,4,4,fixedMaterials:true, skillType:typeof(IndustrySkill),metalType:typeof(SteelBarItem)),"Roller Coaster Rail",typeof(CoasterTrackRecipe),120,2.5f, skillType:typeof(IndustrySkill));}
+{public CoasterTrackRecipe()=>Configure(MinecartRailRecipes.Make<CoasterTrackItem>("CoasterTrack",3,4,4,fixedMaterials:true, skillType:typeof(IndustrySkill),metalType:typeof(SteelBarItem)),"Roller Coaster Rail",typeof(CoasterTrackRecipe),120,1.25f, skillType:typeof(IndustrySkill));}
 [Serialized,Solid,Tag("Constructable"),Tag(BlockTags.PartialStack)] public sealed class CoasterTrackStacked1Block:PickupableBlock,IWaterLoggedBlock{}
 [Serialized,Solid,Tag("Constructable"),Tag(BlockTags.PartialStack)] public sealed class CoasterTrackStacked2Block:PickupableBlock,IWaterLoggedBlock{}
 [Serialized,Solid,Tag("Constructable"),Tag(BlockTags.PartialStack)] public sealed class CoasterTrackStacked3Block:PickupableBlock,IWaterLoggedBlock{}
@@ -102,3 +106,4 @@ public static class CoasterTrackNames
         return p.Count==1?"Modular coaster rail. Match the rail ends and rotate with the hammer.":$"Building in a line advances through parts 1 to {p.Count} automatically, then changes elevation by one block. Reverse the order of travel to ride downhill.";
     }
 }
+

@@ -18,7 +18,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, LocDisplayName("Rail Chain Drive")]
-[LocDescription("Place beside chain track and supply mechanical power. At 1x, requires 2 W per connected block and lifts minecarts at up to 0.5 m/s or coaster carts at up to 1.0 m/s. Set a maximum speed from 0.25x to 3x. The drive automatically slows to available power and recovers toward that maximum when supply returns. Below the power needed for 0.25x it stops. Heavy loads move more slowly. Power loss releases the chain. Use the cart handbrake to prevent rollback. Crafted at the Railworks Workbench using Basic Engineering.")]
+[LocDescription("A mechanical drive that pulls carts up connected chain rails. Supply mechanical power and choose a lifting speed; heavy loads or limited power slow the chain. Apply cart handbrakes before power is lost to prevent rollback. Crafted at the Railworks Workbench using Basic Engineering.")]
 [Weight(12000)]
 public sealed class MinecartChainDriveItem : WorldObjectItem<MinecartChainDriveObject>, IPersistentData
 {
@@ -35,7 +35,7 @@ public sealed class MinecartChainDriveRecipe : MinecartRailRecipeFamily
 {
     public MinecartChainDriveRecipe() => this.Configure(
         MinecartRailRecipes.Make<MinecartChainDriveItem>("Rail Chain Drive", 12, 8, 1, woodenGears: 2, skillType:typeof(BasicEngineeringSkill)),
-        "Rail Chain Drive", typeof(MinecartChainDriveRecipe), 150, 5, skillType:typeof(BasicEngineeringSkill));
+        "Rail Chain Drive", typeof(MinecartChainDriveRecipe), 150, 2.5f, skillType:typeof(BasicEngineeringSkill));
 }
 
 [Serialized]
@@ -52,7 +52,7 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     public const float WattsPerBlock = 2;
     // Eco grid cost is a gameplay balance value. Preserve the established
     // lifting simulation budget when reducing that cost, including load sharing.
-    private const float LiftSimulationWattsPerBlock = 25;
+    private static double LiftSimulationWattsPerBlock => RailConstructionBalances.ChainLiftWattsPerBlock;
     private const float CoasterLiftSimulationWattsPerBlock = 100;
     private static readonly PoweredRailRegistry<MinecartChainDriveObject> Drives=new();
     internal static IEnumerable<MinecartChainDriveObject> ActiveDrives => Drives.Values.Where(d=>!d.IsDestroyed);
@@ -60,7 +60,14 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     private HashSet<RailCell> cells = [];
     private readonly PoweredRailContacts carts=new(1);
     private bool running;
-    private float lastDemand = -1;
+    internal void StopPower()
+    {
+        lock(gate)
+        {
+            cells=[];carts.Clear();running=false;
+            PoweredRailDrive.Stop(this);
+        }
+    }
 
     private bool OwnsRun => !Drives.Snapshot.Any(d => d.ID < this.ID && !d.IsDestroyed
         && d.GetComponent<RailPowerConnectionComponent>().Connected && d.cells.Overlaps(this.cells));
@@ -115,10 +122,12 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
             var ownsRun = this.OwnsRun;
             var supported=this.SupportedSpeed();
             var demand = supported>0 ? ChainLift.GridDemand(this.cells.Count,supported,MaximumSpeedMultiplier) : 0;
-            if (demand != this.lastDemand)
+            // A connection removal clears native demand immediately. Compare
+            // the actual component so an equal-speed reconnect restores it.
+            var consumption = this.GetComponent<PowerConsumptionComponent>();
+            if (demand != consumption.JoulesPerSecond)
             {
-                this.GetComponent<PowerConsumptionComponent>().OverridePowerConsumption(demand);
-                this.lastDemand = demand;
+                consumption.OverridePowerConsumption(demand);
             }
             this.running = ownsRun && this.cells.Count != 0 && this.Enabled && this.HasMechanicalPower;
             this.GetComponent<ChainDriveSpeedComponent>().SetEffectiveSpeed(this.running ? supported : 0);
@@ -153,7 +162,9 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
         => LiftBudgetForConsist(cells,leaderId,true);
     private static (double Watts,float Multiplier) LiftBudgetForConsist(IEnumerable<RailCell> cells,int leaderId,bool coaster)
     {
-        var remaining=new HashSet<RailCell>(cells);double total=0;var speed=float.PositiveInfinity;
+        var remaining=new HashSet<RailCell>(cells.TryGetNonEnumeratedCount(out var count)?count:0);
+        foreach(var cell in cells)remaining.Add(RailPowerConnectionComponent.PhysicalCell(cell));
+        double total=0;var speed=float.PositiveInfinity;
         foreach(var drive in Drives.Snapshot)
         {
             if(drive.IsDestroyed)continue;
@@ -174,6 +185,7 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     }
     internal static float PoweredSpeedFor(RailCell cell)
     {
+        cell=RailPowerConnectionComponent.PhysicalCell(cell);
         foreach(var drive in Drives.Snapshot)
         {
             if(drive.IsDestroyed)continue;
@@ -190,6 +202,7 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Vehicle propulsion lookup/LiftFor");
         // One drive owns a run; parallel drives cannot accidentally multiply free traction.
+        cell=RailPowerConnectionComponent.PhysicalCell(cell);
         foreach (var drive in Drives.Snapshot)
         {
             if (drive.IsDestroyed) continue;
@@ -207,3 +220,5 @@ public class MinecartChainDriveObject : WorldObject, IRepresentsItem
         return (0,1);
     }
 }
+
+

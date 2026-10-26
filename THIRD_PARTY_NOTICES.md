@@ -10,3 +10,5 @@ The Jelly Doughnut License applies only to the original material identified by t
 - The JDL-1 text is reused from Teirdalin's Plugin Loader under its section 9 permission, with its normative terms unchanged.
 
 This is an unofficial Eco mod. No affiliation with or endorsement by Strange Loop Games or Unity is claimed.
+
+- Thunderfury, Blessed Blade of the Windseeker and World of Warcraft belong to Blizzard Entertainment. The hidden Easter egg uses independently authored fan-recreation geometry and a short tooltip excerpt with paraphrased flavor. Blizzard models, textures and game data are not bundled; no affiliation or endorsement is claimed.

@@ -19,7 +19,7 @@ public class MinecartChainBlock : Block, IRepresentsItem
 }
 
 [Serialized, LocDisplayName("Powered Chain Rail")]
-[LocDescription("Hammer-placed chain-lift track. Connect to a Rail Chain Drive beside the track. Each connected block requires 2 W of mechanical power. Uphill direction follows the slope. Load and available power limit lifting speed.")]
+[LocDescription("Rail fitted with a moving chain to pull carts uphill. Connect a Rail Chain Drive beside the track; available power and the weight of the load determine its lifting speed.")]
 [MaxStackSize(20), Weight(2200), ResourcePile, Tag("Constructable"), Tier(1)]
 [Ecopedia("Blocks", "Building Materials", createAsSubPage: true)]
 public sealed class MinecartChainItem : BlockItem<MinecartChainBlock>
@@ -33,7 +33,7 @@ public sealed class MinecartChainRecipe : MinecartRailRecipeFamily
 {
     public MinecartChainRecipe() => this.Configure(
         MinecartRailRecipes.Make<MinecartChainItem>("Powered Chain Rail", 4, 0, 4, hewnLogs: 2, woodenGears: 1, fixedMaterials: true),
-        "Powered Chain Rail", typeof(MinecartChainRecipe), 100, 2);
+        "Powered Chain Rail", typeof(MinecartChainRecipe), 100, 1);
 }
 
 public sealed class MinecartChainFormGroup : FormGroup

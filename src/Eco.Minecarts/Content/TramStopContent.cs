@@ -11,12 +11,12 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-[Serialized,LocDisplayName("Tram Stop"),LocDescription("Compact street-side boarding stop. Name it and set its dwell time and served lines. Trams brake automatically and repeat their configured stop route."),Weight(6000)]
+[Serialized,LocDisplayName("Tram Stop"),LocDescription("A small roadside stop where passengers can board a tram. Give it a name and choose the lines it serves; arriving trams stop for the configured boarding time."),Weight(6000)]
 public sealed class TramStopItem : WorldObjectItem<TramStopObject> { }
 
 [RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class TramStopRecipe : MinecartRailRecipeFamily
-{ public TramStopRecipe()=>Configure(MinecartRailRecipes.Make<TramStopItem>("Tram Stop",2,4, skillType:typeof(IndustrySkill)),"Tram Stop",typeof(TramStopRecipe),60,2, skillType:typeof(IndustrySkill)); }
+{ public TramStopRecipe()=>Configure(MinecartRailRecipes.Make<TramStopItem>("Tram Stop",2,4, skillType:typeof(IndustrySkill)),"Tram Stop",typeof(TramStopRecipe),60,1, skillType:typeof(IndustrySkill)); }
 
 [Serialized,RequireComponent(typeof(PropertyAuthComponent)),RequireComponent(typeof(TrainStationComponent))]
 [RequireComponent(typeof(TramStopComponent)),RequireComponent(typeof(RailAutomationComponent))]
@@ -33,3 +33,4 @@ public sealed class TramStopObject : WorldObject,IRepresentsItem
                 Eco.World.World.DeleteBlock(cell);
     }
 }
+

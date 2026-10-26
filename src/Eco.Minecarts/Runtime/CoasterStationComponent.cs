@@ -12,6 +12,8 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
 {
     private static readonly ConcurrentDictionary<RailCell,CoasterStationComponent> Stations=new();
     private readonly object gate=new();
+    private RailCell? registeredCell;
+    private bool destroyed;
     private readonly Dictionary<Guid,DateTime> arrivals=new();
     private readonly HashSet<Guid> dispatched=new();
     private string? signText;
@@ -23,12 +25,23 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
     }
     private readonly Dictionary<Guid,DateTime> securing=new();
     internal const double RestraintCloseSeconds=1.0;
-    internal static CoasterStationComponent? ForHome(Guid id)=>Stations.Values.FirstOrDefault(s=>s.Parent.ObjectID==id&&!s.Parent.IsDestroyed);
+    internal static CoasterStationComponent? ForHome(Guid id)=>Stations.Values.FirstOrDefault(s=>s.Parent.ObjectID==id&&s.RegisteredCell()!=null);
     private sealed record DockingTrain(RailCouplingComponent Front,int Direction);
     private readonly Dictionary<Guid,DockingTrain> trains=new();
     private static readonly ConcurrentDictionary<Guid,CoasterStationComponent> ActiveStations=new();
     private static Guid TrainId(RailCouplingComponent train)=>train.Group().MinBy(c=>c.Parent.ID)!.Parent.ObjectID;
-    internal static CoasterStationComponent? At(RailCell cell){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/At"); return Stations.TryGetValue(cell,out var station)&&!station.Parent.IsDestroyed?station:null; }
+    private RailCell? RegisteredCell()
+    {
+        lock(gate)
+            return !destroyed&&!Parent.IsDestroyed&&registeredCell is {} cell
+                &&Stations.TryGetValue(cell,out var current)&&current==this?cell:null;
+    }
+    internal static CoasterStationComponent? At(RailCell cell)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/At");
+        var physical=RailPowerConnectionComponent.PhysicalCell(cell);
+        return Stations.TryGetValue(physical,out var station)&&station.RegisteredCell()==physical?station:null;
+    }
     internal static bool ApproachBrake(VoxelRail rail,float t,double speed,RailCouplingComponent train)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/ApproachBrake");
@@ -52,7 +65,7 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
             if(At(rail.Cell) is {} station)
             {
                 lock(station.gate)
-                    if(station.dispatched.Contains(TrainId(train)))return false;
+                    if(station.RegisteredCell()==null||station.dispatched.Contains(TrainId(train)))return false;
                 // Aim to stop inside the loading segment, not before its socket.
                 return speed*speed>2*deceleration*(distance+rail.Profile.Length*.5);
             }
@@ -67,12 +80,51 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
         CartReturnStatus=ReturnedStations.ContainsKey(Parent.ObjectID)?"Used; available after the next server restart":"Available once per server restart";
         PublishSignText();
         ((Eco.Mods.TechTree.CoasterStationObject)Parent).CompactLegacyFootprint();
-        Stations[Parent.GetComponent<CoasterRailComponent>().Rail.Cell]=this;
+        Register();
+    }
+    private void Register()
+    {
+        lock(gate)
+        {
+            if(destroyed||Parent.IsDestroyed||registeredCell!=null)return;
+            var cell=RailPowerConnectionComponent.PhysicalCell(Parent.GetComponent<CoasterRailComponent>().Rail.Cell);
+            registeredCell=cell;Stations[cell]=this;
+            RailSimulationFrame.Invalidate();
+        }
+    }
+    private void Unregister(bool destroying=false)
+    {
+        lock(gate)
+        {
+            if(destroying)destroyed=true;
+            if(registeredCell is {} cell)
+            {
+                Stations.TryRemove(new KeyValuePair<RailCell,CoasterStationComponent>(cell,this));
+                registeredCell=null;RailSimulationFrame.Invalidate();
+            }
+            // A moved platform cannot retain authority over its former queue.
+            // Leave the carts and their restraints in place; discard only this
+            // station's transient dwell, closing and dispatch observations.
+            foreach(var id in trains.Keys)
+            {
+                ActiveStations.TryRemove(new KeyValuePair<Guid,CoasterStationComponent>(id,this));
+                Parent.GetComponent<TrainStationComponent>().NotifyVehicle(RailEvent.Leave,id);
+            }
+            trains.Clear();arrivals.Clear();securing.Clear();dispatched.Clear();
+        }
+    }
+    public override void OnBeforeObjectMoved()
+    {
+        base.OnBeforeObjectMoved();Unregister();
+    }
+    public override void OnAfterObjectMoved()
+    {
+        base.OnAfterObjectMoved();Register();
     }
     internal static bool ControlsTrain(RailCouplingComponent train)
     {
         if(Stations.IsEmpty)return false;
-        if(ActiveStations.ContainsKey(TrainId(train)))return true;
+        if(ActiveStations.TryGetValue(TrainId(train),out var active)&&active.RegisteredCell()!=null)return true;
         var facing=train.Parent.GetComponent<MinecartMotionComponent>().BoundConsistPose?.Facing??1;
         return train.LeadingEnd(facing).Car.Parent.GetComponent<MinecartMotionComponent>().BoundRailCell is {} cell&&At(cell)!=null;
     }
@@ -83,17 +135,22 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
         var front=train.LeadingEnd((speed<0?-1:1)*facing);
         var station=ActiveStations.GetValueOrDefault(id);
         if(station==null&&train.GuidedMemberPose(front.Car) is {} pose)station=At(pose.Rail.Cell);
-        if(station==null||station.Parent.IsDestroyed){input=default;return false;}
-        input=station.Control(train,facing,speed,front);return true;
+        if(station==null){input=default;return false;}
+        lock(station.gate)
+        {
+            // At/ActiveStations may have been sampled just before detachment.
+            if(station.RegisteredCell()==null){input=default;return false;}
+            input=station.Control(train,facing,speed,front);return true;
+        }
     }
     internal double LimitTravel(RailCouplingComponent train,int facing,double travel)
     {
         lock(gate)
         {
             var id=TrainId(train);
-            if(dispatched.Contains(id)||!trains.TryGetValue(id,out var dock)
+            if(RegisteredCell() is not {} cell||dispatched.Contains(id)||!trains.TryGetValue(id,out var dock)
                 ||train.GuidedMemberPose(dock.Front) is not {} pose
-                ||pose.Rail.Cell!=Parent.GetComponent<CoasterRailComponent>().Rail.Cell)return travel;
+                ||RailPowerConnectionComponent.PhysicalCell(pose.Rail.Cell)!=cell)return travel;
             var direction=dock.Direction*dock.Front.FacingRelativeTo(train)*facing;
             if(travel*direction<=0)return travel;
             var remaining=(.5-pose.T)*pose.Rail.Profile.Length*pose.Facing*dock.Direction;
@@ -116,12 +173,19 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
                 ActiveStations[id]=this;
                 Parent.GetComponent<TrainStationComponent>().NotifyVehicle(RailEvent.Enter,id);
             }
+            if(train.RepairRequired)
+            {
+                securing.Remove(id);
+                if(!dispatched.Contains(id)&&Math.Abs(speed)<.05)
+                    foreach(var car in train.Group())((RailVehicleObject)car.Parent).SetRestraints(false);
+                return(0,true);
+            }
             var driveDirection=dock.Direction*dock.Front.FacingRelativeTo(train)*facing;
             // Crawl to the centre using the normal force integrator. Only the
             // leading car's contact defines docking; the occupied car may be
             // several rail pieces behind it. The travel limit prevents overrun.
             if(!dispatched.Contains(id)&&train.GuidedMemberPose(dock.Front) is {} pose
-                &&pose.Rail.Cell==Parent.GetComponent<CoasterRailComponent>().Rail.Cell)
+                &&RailPowerConnectionComponent.PhysicalCell(pose.Rail.Cell)==registeredCell)
             {
                 var remaining=(.5-pose.T)*pose.Rail.Profile.Length*pose.Facing*dock.Direction;
                 if(remaining>.001)
@@ -166,7 +230,7 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
         PublishSignText();
         lock(gate)
         {
-            var cell=Parent.GetComponent<CoasterRailComponent>().Rail.Cell;
+            if(RegisteredCell() is not {} cell)return;
             foreach(var pair in trains.ToArray())
                 if(pair.Value.Front.Parent.IsDestroyed||TrainId(pair.Value.Front)!=pair.Key||!SpansStation(pair.Value,cell))
                 {
@@ -178,8 +242,7 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
     }
     public override void Destroy(){
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Detection and departure/Destroy", this.Parent);
-        foreach(var pair in ActiveStations.Where(p=>p.Value==this))ActiveStations.TryRemove(pair);
-        Stations.TryRemove(Parent.GetComponent<CoasterRailComponent>().Rail.Cell,out _);base.Destroy();}
+        Unregister(destroying:true);base.Destroy();}
 
     private static bool SpansStation(DockingTrain dock,RailCell cell)
     {
@@ -196,7 +259,7 @@ public sealed partial class CoasterStationComponent:WorldObjectComponent
             var distance=0d;var seen=new HashSet<RailCell>();
             while(distance<=range&&seen.Add(rail.Cell))
             {
-                if(rail.Cell==cell)return true;
+                if(RailPowerConnectionComponent.PhysicalCell(rail.Cell)==cell)return true;
                 distance+=(direction>0?1-t:t)*rail.Profile.Length;
                 if(distance>range||TrackWorld.NeighborForVehicle(rail,direction>0?1:0) is not {} next)break;
                 rail=next.Rail;t=next.End;direction=next.End==0?1:-1;

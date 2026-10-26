@@ -30,7 +30,7 @@ public sealed class RailVehicleAccessComponent : WorldObjectComponent
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Change", this.Parent);
         if(player==null || Parent.IsDestroyed || Auth?.Deed==null
             || !Parent.IsAuthorized(player.User,AccessType.OwnerAccess)
-            || Vector3.Distance(player.User.Position,Parent.Position)>((RailVehicleObject)Parent).CouplerOffset+4)return;
+            || !RailWorldDistance.Within(player.User.Position,Parent.Position,((RailVehicleObject)Parent).CouplerOffset+4))return;
         var user=UserManager.Users.FirstOrDefault(u=>string.Equals(u.Name,value?.Trim(),StringComparison.OrdinalIgnoreCase));
         if(user==null){player.InfoBoxLoc($"Enter the exact name of an existing player.");return;}
         if(add)Auth.Deed.Accessors.Add(user);else Auth.Deed.Accessors.Remove(user);

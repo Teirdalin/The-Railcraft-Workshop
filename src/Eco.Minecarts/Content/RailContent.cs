@@ -23,14 +23,21 @@ internal static class MinecartRailRecipes
         int steelGears = 0, int lubricant = 0)
         where TItem : Item, new()
     {
+        var budget=Eco.Minecarts.Physics.RailConstructionBalances.Find(Eco.Minecarts.Physics.RailConstructionBalances.Key(typeof(TItem)));
+        // Reduce construction metal, while keeping authored/custom providers
+        // authoritative. The coaster vehicle's plate budget is already reduced.
+        if(budget?.MetalBars==null&&typeof(TItem)!=typeof(RollerCoasterCartItem)&&ironBars>1)
+            ironBars=Math.Max(1,(ironBars*4+2)/5);
+        ironBars=budget?.MetalBars??ironBars;woodBoards=budget?.WoodBoards??woodBoards;hewnLogs=budget?.HewnLogs??hewnLogs;
+        woodenGears=budget?.WoodenGears??woodenGears;steelGears=budget?.SteelGears??steelGears;
+        lubricant=budget?.Lubricant??lubricant;fabric=budget?.Fabric??fabric;output=budget?.OutputCount??output;
         var skill = skillType ?? typeof(BasicEngineeringSkill);
         var metal = metalType ?? typeof(IronBarItem);
         var recipe = new Recipe();
-        var ingredients = new List<IngredientElement>
-        {
-            fixedMaterials ? new IngredientElement(metal, ironBars, true)
-                : new IngredientElement(metal, ironBars, skill),
-        };
+        var ingredients = new List<IngredientElement>();
+        if(budget?.Wood is >0)ingredients.Add(new IngredientElement("Wood",budget.Wood.Value,true));
+        if(ironBars>0)ingredients.Add(fixedMaterials ? new IngredientElement(metal, ironBars, true)
+                : new IngredientElement(metal, ironBars, skill));
         if (woodBoards > 0) ingredients.Add(fixedMaterials
             ? new IngredientElement("WoodBoard", woodBoards, true)
             : new IngredientElement("WoodBoard", woodBoards, skill));
@@ -66,6 +73,8 @@ public abstract class MinecartRailRecipeFamily : RecipeFamily
 {
     protected void Configure(Recipe recipe, string displayName, Type recipeType, float labor, float minutes, Type? skillType = null)
     {
+        var budget=Eco.Minecarts.Physics.RailConstructionBalances.Find(Eco.Minecarts.Physics.RailConstructionBalances.Key(recipeType));
+        labor=budget?.LaborCalories??labor;minutes=budget?.CraftMinutes??minutes;
         var skill = skillType ?? typeof(BasicEngineeringSkill);
         this.Recipes = [recipe];
         this.ExperienceOnCraft = 2;
@@ -78,3 +87,4 @@ public abstract class MinecartRailRecipeFamily : RecipeFamily
         CraftingComponent.AddRecipe(RailRecipeWorkshops.For(recipeType), this);
     }
 }
+

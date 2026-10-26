@@ -19,9 +19,9 @@ public sealed class HandcarDrivingComponent : WorldObjectComponent
     public void Operate(Player player,InteractionTriggerInfo trigger,InteractionTarget target)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Manual controls/Operate", this.Parent);
-        if(this.Parent.IsDestroyed || !target.ContainsParameter("HandcarPump")
+        if(player == null || this.Parent.IsDestroyed || !target.ContainsParameter("HandcarPump")
             || !this.Parent.IsAuthorized(player.User,AccessType.FullAccess)
-            || Vector3.Distance(player.User.Position,this.Parent.Position)>3) return;
+            || !RailWorldDistance.Within(player.User.Position,this.Parent.Position,3)) return;
         var mounts=this.Parent.GetComponent<MountComponent>();
         if(mounts.Driver==player) { mounts.TryDismountPlayer(player); return; }
         if(player.MountManager.IsMounted || mounts.Driver!=null || !this.Parent.GetComponent<RailCouplingComponent>().CanBoard) return;

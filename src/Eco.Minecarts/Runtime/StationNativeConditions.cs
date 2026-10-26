@@ -35,6 +35,13 @@ public sealed class StationDepartureContext : IContextObject, IController
     public double FuelPercent { get; init; } = double.NaN;
     public double FuelMegajoules { get; init; } = double.NaN;
     public IReadOnlyList<User> Passengers { get; init; } = [];
+    // Per-departure observation only. Native seats are still authoritative;
+    // accepting a sampled condition must not ignore intervening boarding.
+    internal Func<bool>? ObservationCurrent { get; init; }
+    internal Func<Guid,bool?>? StationPresence { get; init; }
+    internal Func<Guid,bool?>? StationIncoming { get; init; }
+    internal Func<bool>? StationPresenceCurrent { get; init; }
+    internal bool IsCurrent => (ObservationCurrent?.Invoke() ?? true) && (StationPresenceCurrent?.Invoke() ?? true);
 }
 
 public abstract class StationRuleValue : GameValue<bool>
@@ -169,7 +176,16 @@ public static class StationNativeConditions
     public static SetOfConditions FromRules(IEnumerable<StationDepartureCondition> rules,RequiredTrue comparison)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Departure conditions/FromRules"); var set=new SetOfConditions { Comparison=comparison }; foreach(var rule in rules) set.List.Add(FromRule(rule)); return set; }
-    public static GameValue<bool>? Copy(GameValue<bool>? value){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Departure conditions/Copy"); return value==null?null:(GameValue<bool>)Cloner.Clone(value); }
+    public static GameValue<bool>? Copy(GameValue<bool>? value)
+    {
+        using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Departure conditions/Copy");
+        // Restored fields can bypass editor validation. Bound their shape before
+        // native cloning, while retaining raw passenger inputs for Normalize.
+        if(value==null)return null;
+        return StationPassengerConditions.CanNormalize(value)?(GameValue<bool>)Cloner.Clone(value):new No();
+    }
+    public static string Describe(GameValue<bool>? value,string empty="choose conditions")
+        =>value==null?empty:Valid(value)?value.Description().ToString():"Invalid conditions: edit to replace";
     public static bool Valid(GameValue<bool>? value)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Stations/Departure conditions/Valid");
@@ -180,7 +196,7 @@ public static class StationNativeConditions
             if(node==null || depth>8 || ++count>64 || !seen.Add(node)) return false;
             var valid=node switch
             {
-                StationRuleValue or StationTrainValue=>true,
+                StationRuleValue or StationTrainValue or StationTrainPresentCondition or StationTrainIncomingCondition=>true,
                 GameValueContext<bool> context=>context.Name==nameof(StationDepartureContext.TrainAtStation),
                 StationPassengerMatchCondition passenger=>StationPassengerConditions.Valid(passenger.Condition) && Enum.IsDefined(passenger.Match),
                 Yes or No=>true,
@@ -198,20 +214,41 @@ public static class StationNativeConditions
         // Eco's generic empty SetOfConditions evaluates true. A blank station
         // must remain stopped, including an empty set inside a NOT expression.
         if(expression==null || !Valid(expression)) return false;
-        // Empty nested groups must not become true via Eco's generic semantics,
-        // and missing cargo must not become a successful negated condition.
-        bool Complete(GameValue<bool> node)=>node switch
+        // Keep each leaf's validity and value together. A second native
+        // evaluation repeats character queries and can observe a different
+        // passenger state from the one whose completeness was checked.
+        bool TryEvaluate(GameValue<bool> node,out bool value)
         {
-            StationRuleValue leaf=>!leaf.Value(context).Invalid,
-            StationTrainValue leaf=>!leaf.Value(context).Invalid,
-            GameValueContext<bool> leaf=>!leaf.Value(context).Invalid,
-            StationPassengerMatchCondition passenger=>!passenger.Value(context).Invalid,
-            Yes or No=>true,
-            Not not=>Complete(not.NotValue),
-            SetOfConditions set=>set.List.Count>0&&set.List.All(Complete),
-            _=>false
-        };
-        if(!Complete(expression)) return false;
-        var result=expression.Value(context); return result!=null&&!result.Invalid&&result.Val;
+            value=false;
+            if(node is Not not)
+            {
+                if(!TryEvaluate(not.NotValue,out var inner))return false;
+                value=!inner;return true;
+            }
+            if(node is SetOfConditions set)
+            {
+                if(set.List.Count==0)return false;
+                var matching=0;
+                // Even ANY/NONE must check every required input before
+                // dispatch. A missing input cannot be hidden by another leaf.
+                foreach(var child in set.List)
+                {
+                    if(!TryEvaluate(child,out var matched))return false;
+                    if(matched)matching++;
+                }
+                value=set.Comparison switch
+                {
+                    RequiredTrue.All=>matching==set.List.Count,
+                    RequiredTrue.Any=>matching>0,
+                    RequiredTrue.None=>matching==0,
+                    _=>false
+                };
+                return true;
+            }
+            var result=node.Value(context);
+            if(result==null || result.Invalid)return false;
+            value=result.Val;return true;
+        }
+        return TryEvaluate(expression,out var ready) && ready;
     }
 }

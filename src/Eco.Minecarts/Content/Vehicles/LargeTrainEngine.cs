@@ -19,16 +19,17 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, RequireComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(FuelConsumptionComponent)), RequireComponent(typeof(AirPollutionComponent)), RequireComponent(typeof(MineTrainDrivingComponent)), RequireComponent(typeof(TrainControllerComponent))]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.MechanicsSkill),5)]
 public sealed class LargeTrainEngineObject : RollingStockObject
 {
-    public static RailVehicleSpec DefaultSpecification {get;} = new("LargeTrainEngine", "Large Train Engine", 7000, 1000, 8, 4.8f, 2.6f, 2.5f, 30, 250000, 70000, 40000, 100000, Model: "LargeEngine", Tier: "Industry");
+    public static RailVehicleSpec DefaultSpecification {get;} = new("LargeTrainEngine", "Large Train Engine", 7000, 1000, 8, 4.8f, 2.6f, 2.5f, 30, 1500000, 900000, 900000, 100000, Model: "LargeEngine", Tier: "Industry");
     public override RailVehicleSpec RailSpec => RailVehicleBalances.Resolve(DefaultSpecification);
     public override RailVehicleCapabilities Capabilities => RailVehicleCapabilities.FueledMotor | RailVehicleCapabilities.StationRouting;
     public override RailFuelConfiguration FuelConfiguration=>new(4,["Burnable Fuel"]);
     static LargeTrainEngineObject() => AddOccupancy<LargeTrainEngineObject>([]);
 }
 
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
+[LocDescription("A large steam locomotive for moving long, heavily loaded trains. Needs broad curves and a steady supply of burnable fuel. Crafted at the Assembly Line using Mechanics.")]
 [Serialized, LocDisplayName("Large Train Engine"), Weight(15000)] public sealed class LargeTrainEngineItem : RailModuleItem<LargeTrainEngineObject> { }
 
 [RequiresSkill(typeof(MechanicsSkill), 5)] public sealed class LargeTrainEngineRecipe : RollingStockRecipe<LargeTrainEngineItem> { }

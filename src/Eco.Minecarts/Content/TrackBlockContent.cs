@@ -19,7 +19,7 @@ public class MinecartTrackBlock : Block, IRepresentsItem
 }
 
 [Serialized, LocDisplayName("Standard Rail")]
-[LocDescription("Shared steel-wheeled rail family for minecarts, handcars and locomotives. Carry it and use a hammer to select shapes. Long rolling stock requires broad-radius turns, not a separate gauge. Slope stages 1–4 form a one-block rise; matching road or dirt ramps automatically select overlays. Coaster carts use Roller Coaster Rail instead.")]
+[LocDescription("Durable rails for minecarts, handcars, and locomotives. Use a hammer to shape curves, slopes, and buffers; longer vehicles need broad curves. Fits matching road and dirt ramps. Coaster carts use Roller Coaster Rail.")]
 [MaxStackSize(20), Weight(1800), ResourcePile, Tag("Constructable"), Tier(1)]
 [Ecopedia("Blocks", "Building Materials", createAsSubPage: true)]
 public sealed class MinecartTrackItem : BlockItem<MinecartTrackBlock>
@@ -33,7 +33,7 @@ public sealed class MinecartTrackRecipe : MinecartRailRecipeFamily
 {
     public MinecartTrackRecipe() => this.Configure(
         MinecartRailRecipes.Make<MinecartTrackItem>("Standard Rail", 3, 0, 4, hewnLogs: 2, fixedMaterials: true),
-        "Standard Rail", typeof(MinecartTrackRecipe), 80, 1.25f);
+        "Standard Rail", typeof(MinecartTrackRecipe), 80, .625f);
 }
 
 [Serialized, Solid, Tag("Constructable"), Tag(BlockTags.PartialStack)]

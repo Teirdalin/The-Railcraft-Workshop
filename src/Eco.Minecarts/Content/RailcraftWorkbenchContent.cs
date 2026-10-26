@@ -35,7 +35,7 @@ public sealed class RailcraftWorkbenchObject:WorldObject,IRepresentsItem
         Enumerable.Range(0,2).SelectMany(x=>Enumerable.Range(0,2).Select(y=>new BlockOccupancy(new(x,y,0)))).ToList());
 }
 [Serialized,LocDisplayName("Railworks Workbench"),
- LocDescription("A dedicated workbench for rails, track shapes, switches, supports, stations and mechanical drives. Vehicles and electrical drives are crafted at their profession tables. Connect nearby storage to supply crafting materials."),
+ LocDescription("A workbench for assembling rails, switches, supports, stations, and mechanical railway drives. Link nearby storage to keep construction materials close at hand."),
  Weight(4000),Ecopedia("Work Stations","Craft Tables",createAsSubPage:true),
  AllowPluginModules(ItemTypes=new[]{typeof(BasicEngineeringUpgradeItem),typeof(BasicUpgradeItem),typeof(AdvancedUpgradeItem),typeof(ModernUpgradeItem)})]
 public sealed class RailcraftWorkbenchItem:WorldObjectItem<RailcraftWorkbenchObject>,IPersistentData
@@ -51,8 +51,9 @@ public sealed class RailcraftWorkbenchRecipe:RecipeFamily
     {
         Recipes=[MinecartRailRecipes.Make<RailcraftWorkbenchItem>("Railworks Workbench",4,8)];
         ExperienceOnCraft=3;LaborInCalories=CreateLaborInCaloriesValue(120,typeof(BasicEngineeringSkill));
-        CraftMinutes=CreateCraftTimeValue(typeof(RailcraftWorkbenchRecipe),3,typeof(BasicEngineeringSkill));
+        CraftMinutes=CreateCraftTimeValue(typeof(RailcraftWorkbenchRecipe),1.5f,typeof(BasicEngineeringSkill));
         Initialize(Localizer.DoStr("Railworks Workbench"),typeof(RailcraftWorkbenchRecipe));
         CraftingComponent.AddRecipe(typeof(WainwrightTableObject),this);
     }
 }
+

@@ -1,3 +1,26 @@
+# Railworks Workshop 0.2.118
+
+Railworks Workshop 0.2.118 brings the server distribution up to date with the train, tram, minecart, coaster, station and rail improvements since 0.2.68. Tested against **Eco 0.14.2.1 release-1106**.
+
+Download **Railworks-Workshop-Server-0-2-118.zip**. Its 24 files contain the matching `Railworks.dll` and single `Railworks.unity3d`, fourteen editable vehicle settings and eight editable rail settings. The crossing and bell assets are included in the main bundle.
+
+- **Routing and automation:** trains and trams recheck departure conditions and relevant settings before committing a station reservation. Cargo, passenger, fuel, maintenance, coupling, route, track and tram-service changes while waiting cause a safe retry. Station holds, elapsed dwell and route cursors are preserved. Routing editors have simpler controls and reject stale replies.
+- **Vehicle movement:** mine trains anticipate corners and apply gradual service braking instead of stopping abruptly at 90-degree turns. Existing safety stops remain.
+- **Infrastructure:** rail supports retain their central standing surfaces. Crossings, the supplied bell, station traffic conditions, fares and existing coaster station behavior remain integrated.
+- **Crafting and cargo:** trains use the Assembly Line, train construction and maintenance use iron components, and Large Cargo Cars allow dumping by default. Customized settings, including an explicit dumping opt-out, can be preserved on upgrades.
+- **Hidden item:** administrators can spawn `ThunderfuryItem`, with the exact Thunderfury name, an independently authored split-blade model, cosmetic lightning impact bindings and 10% more animal damage than the Modern Machete.
+
+Close the hosted game or dedicated server before replacing files. Install the DLL, bundle, `Vehicles` and `Rails` in server `Mods/UserCode`; hosted games use `Eco_Data/Server/Mods/UserCode`. Keep customized vehicle/rail files and add missing settings. Remove obsolete duplicate mod DLLs/bundles. Joining players need no third-party loader for the server features.
+
+The optional coaster camera remains independently versioned at [0.2.66](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.68/Optional.Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip). It is installed separately by players who want it; it is not included in this server ZIP.
+
+Validation: matched disposable native EcoServer runs passed **2,011 selected cases per build**, with **31,731 baseline / 32,583 candidate assertions**. The 184 newest cases reduced stale dispatches from 140 to zero, with recovery after fresh observations. All 1,827 inherited records matched, and all 1,048 saved definitions were unchanged from 0.2.116. ZIP CRC, all 24 file hashes and the shared release-content guard passed. Live connected gameplay, multiplayer, natural movement after reload and whole-server performance remain unverified; this is a prerelease.
+
+ZIP SHA-256: `E36BBF5DA065B455ED8B6EB87228C8BB937F2B57D1C0F4FE27C2F43CBF79DCB3`.
+
+
+---
+
 # 0.2.68 prerelease - leading-car station docking
 
 - Dock the physical leading car at the station centre regardless of which car is occupied or selected as simulation leader. Determine the endpoint through reciprocal couplers, including backwards-facing cars and reverse travel.

@@ -20,6 +20,7 @@ internal sealed class RailVehicleNetEntity : NetPhysicsEntity
     private double clockOrigin = Eco.Shared.Time.TimeUtil.Seconds;
     private float clockBase;
     private float? lastNativePacketTime;
+    private System.Numerics.Vector3? lastIndexedPosition;
 
     private void CaptureGuidedPose()
     {
@@ -30,6 +31,17 @@ internal sealed class RailVehicleNetEntity : NetPhysicsEntity
         // refresh that cache for distant viewers before publishing the keyframe.
         this.Position = this.cart.Position;
         this.Rotation = this.cart.Rotation;
+        // Direct server pose writes bypass WorldObject.ReceiveUpdate, which
+        // normally relocates the owning WorldObject in Eco's network quadtree.
+        // Relevance discovery uses that index before it checks IsRelevant; a
+        // moved train can otherwise remain indexed at its old placement point.
+        // Notify with the registered owner, not this backing physics entity,
+        // and avoid reinserting stationary stock on every parked keyframe.
+        if (this.cart.Initialized && !this.cart.IsDestroyed && this.lastIndexedPosition != this.Position)
+        {
+            NetObjectManager.Default.OnObjectMoved(this.cart);
+            this.lastIndexedPosition = this.Position;
+        }
         this.railSample = this.cart.GetComponent<MinecartMotionComponent>()?.ManualCart?.State;
     }
 
@@ -198,3 +210,4 @@ internal sealed class RailVehicleNetEntity : NetPhysicsEntity
         new Eco.Shared.Math.Vector2(observer.Position.X, observer.Position.Z),
         new Eco.Shared.Math.Vector2(this.Position.X, this.Position.Z)); }
 }
+

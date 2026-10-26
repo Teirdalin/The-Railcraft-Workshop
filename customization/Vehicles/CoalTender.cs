@@ -1,18 +1,18 @@
-// Railworks Workshop: edit values, save, and restart Eco. No build tools needed.
-// Keep this filename, namespace, class name and VehicleKey unchanged.
-// Weights in inventory are grams; vehicle/cargo physics masses are kilograms.
+// Edit values and restart Eco. Keep names and VehicleKey unchanged.
 namespace RailworksWorkshop.VehicleSettings
 {
     public static class CoalTenderSettings
     {
-        // False: original artwork. True: newer artwork.
         public const bool NewDesign = false;
         public const string VehicleKey = "CoalTender";
         public const int CarriedItemWeightGrams = 15000;
         public const double EmptyMassKg = 480;
         public const double CargoCapacityKg = 3000;
-        // Automatically unload cargo when crossing a Dumping Rail.
         public const bool AllowDumping = false;
+        // Additional native item tags; the tender always requires burnable fuel.
+        public const string CargoFilterTags = "Burnable Fuel";
+        // Feed compatible fuel from cargo to coupled locomotives.
+        public const bool SuppliesLocomotiveFuel = true;
         public const int StorageSlots = 12;
         public const double MaximumSpeedMetresPerSecond = 30;
         public const double PowerWatts = 0;
@@ -22,3 +22,4 @@ namespace RailworksWorkshop.VehicleSettings
         public const double DurabilityHours = 200;
     }
 }
+

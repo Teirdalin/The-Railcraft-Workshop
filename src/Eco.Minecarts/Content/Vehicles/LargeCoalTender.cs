@@ -18,7 +18,8 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-[Serialized] public sealed class LargeCoalTenderObject : RollingStockObject
+[Serialized] [Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.MechanicsSkill),4)]
+public sealed class LargeCoalTenderObject : RollingStockObject
 {
     public static RailVehicleSpec DefaultSpecification {get;} = new("LargeCoalTender", "Large Coal Tender", 3500, 12000, 32, 3.8f, 2.4f, 2.5f, 30, 0, 0, 6000, 0, Tender: true, Model: "LargeTender", Tier: "Industry");
     public override RailVehicleSpec RailSpec => RailVehicleBalances.Resolve(DefaultSpecification);
@@ -26,7 +27,7 @@ using Eco.Shared.Serialization;
     static LargeCoalTenderObject() => AddOccupancy<LargeCoalTenderObject>([]);
 }
 
-[LocDescription("Crafted at the Machinist Table using Mechanics.")]
+[LocDescription("A large fuel wagon for keeping steam locomotives supplied on demanding hauls. Carries coal, charcoal, and other burnable fuel. Crafted at the Assembly Line using Mechanics.")]
 [Serialized, LocDisplayName("Large Coal Tender"), Weight(15000)] public sealed class LargeCoalTenderItem : RailModuleItem<LargeCoalTenderObject> { }
 
 [RequiresSkill(typeof(MechanicsSkill), 4)] public sealed class LargeCoalTenderRecipe : RollingStockRecipe<LargeCoalTenderItem> { }

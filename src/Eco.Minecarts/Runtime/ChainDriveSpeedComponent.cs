@@ -39,7 +39,7 @@ public sealed class ChainDriveSpeedComponent : WorldObjectComponent, IPersistent
         set { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Persistence/Component snapshots/ChainDriveSpeedComponent.PersistentData.set", this.Parent); multiplier=ChainLift.SpeedMultiplier((value as ChainDriveSpeedData)?.Multiplier ?? 1,5); }
     }
     private bool CanAdjust(Player player) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Connections and demand/CanAdjust", this.Parent); return player!=null && Parent!=null && !Parent.IsDestroyed
-        && Parent.IsAuthorized(player.User,AccessType.FullAccess) && Vector3.Distance(player.User.Position,Parent.Position)<=4; }
+        && Parent.IsAuthorized(player.User,AccessType.FullAccess) && RailWorldDistance.Within(player.User.Position,Parent.Position,4); }
     // Autogen treats non-void methods as value editors. A Task-returning
     // action becomes an unusable selector on the stock Eco client.
     // Keep the old RPC for compatibility, but expose only void buttons.
@@ -64,3 +64,4 @@ public sealed class ChainDriveSpeedComponent : WorldObjectComponent, IPersistent
         Parent.Tick();
     }
 }
+

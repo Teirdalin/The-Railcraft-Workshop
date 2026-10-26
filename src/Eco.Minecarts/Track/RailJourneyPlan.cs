@@ -9,12 +9,17 @@ public sealed class RailJourneyPlan
     public readonly record struct Node(VoxelRail Rail,int Entry,double Start,double Length,double Grade);
     private readonly record struct Run(int First,int Last,double Radius,double Grade);
     private readonly record struct StopEvent(int Node,int Id,double Position,bool Buffer);
-    public readonly record struct Safety(double SpeedLimit,double Deceleration,double Obstacle,int Station,bool Buffer);
+    public readonly record struct Safety(double SpeedLimit,double Deceleration,double Obstacle,int Station,bool Buffer,
+        double CurveSpeedLimit=double.PositiveInfinity);
     private readonly Node[] nodes;
     private readonly Run[] runs;
     private readonly StopEvent[] stops;
     private readonly int[] switchNodes;
+    private readonly int[] previousSwitchNodes;
     public ReadOnlySpan<int> SwitchNodes=>switchNodes;
+    // Each physical turnout can serve several different paths in an itinerary.
+    // Only its next encounter may prepare points for the current cursor.
+    internal bool IsFirstSwitchAhead(int ordinal,int cursor)=>switchNodes[ordinal]>=cursor && previousSwitchNodes[ordinal]<cursor;
     private readonly Dictionary<(VoxelRail,int),int> indices;
     private readonly Func<RailCell,RailCell> normalize;
     private readonly RailCell loopShift;
@@ -30,6 +35,14 @@ public sealed class RailJourneyPlan
     {
         this.nodes=nodes;this.stops=stops;this.indices=indices;
         switchNodes=nodes.Select((node,i)=>(node,i)).Where(x=>x.node.Rail.Profile.Shape=="Switch").Select(x=>x.i).ToArray();
+        previousSwitchNodes=new int[switchNodes.Length];
+        var switches=new Dictionary<RailCell,int>();
+        for(var s=0;s<switchNodes.Length;s++)
+        {
+            var i=switchNodes[s];var cell=normalize(nodes[i].Rail.Cell);
+            previousSwitchNodes[s]=switches.TryGetValue(cell,out var previous)?previous:-1;
+            switches[cell]=i;
+        }
         this.normalize=normalize;this.loopShift=loopShift;
         LoopStart=loopStart;Limited=limited;EndsAtStation=station;TrackEnd=trackEnd;
         var groups=new List<Run>();
@@ -65,11 +78,12 @@ public sealed class RailJourneyPlan
             nodes.Add(new(rail,entry,distance,length,Math.Max(0,-rail.Profile.Tangent(entry).Y*sign)));
             foreach(var stop in stations(rail,sign))
             {
+                if(!RailGuidance.CanReachStop(rail,index==0?t:entry,stop.T,sign))continue;
                 var position=distance+((double)stop.T-entry)*length*sign;
                 stops.Add(new(index,stop.Id,position,false));
                 if(position-initial-nose>=-.4)terminalStation=true;
             }
-            var beam=distance+(.8-entry)*length*sign;
+            var beam=distance+((double)RailGuidance.BufferT-entry)*length*sign;
             var buffer=rail.Profile.Shape=="Stopper";
             if(buffer)stops.Add(new(index,0,beam,true));
             distance+=length;
@@ -99,6 +113,19 @@ public sealed class RailJourneyPlan
         return TrackEnd;
     }
     public double Position(int index,float t)=>nodes[index].Start+(nodes[index].Entry==0?(double)t:1d-t)*nodes[index].Length;
+    private double NextStopPosition(StopEvent stop,double position,double nose,double offset=0)
+    {
+        var target=stop.Position+offset;
+        var remaining=target-position-nose;
+        // The car's cursor and the leading nose can lie on different laps.
+        // Use the first eligible occurrence with the existing arrival margin.
+        if(!stop.Buffer && remaining<-.4 && LoopStart>=0 && stop.Node>=LoopStart)
+        {
+            var circuit=Length-nodes[LoopStart].Start;
+            target+=Math.Ceiling((-.4-remaining)/circuit)*circuit;
+        }
+        return target;
+    }
     // The destination remains visible beyond the braking lookahead. This reads
     // the saved itinerary only; it performs no new track discovery.
     public int TargetStation(int index,float t,double nose,int departedStation)
@@ -107,9 +134,7 @@ public sealed class RailJourneyPlan
         foreach(var stop in stops)
         {
             if(stop.Buffer || stop.Id==departedStation)continue;
-            var remaining=stop.Position-position-nose;
-            if(remaining<-.4 && LoopStart>=0 && stop.Node>=LoopStart)
-                remaining+=Length-nodes[LoopStart].Start;
+            var remaining=NextStopPosition(stop,position,nose)-position-nose;
             if(remaining<-.4 || remaining>=nearest)continue;
             nearest=remaining;target=stop.Id;
         }
@@ -128,7 +153,9 @@ public sealed class RailJourneyPlan
         var position=Position(index,t);var current=nodes[index];
         var obstacle=double.PositiveInfinity;var station=0;var buffer=false;
         if(!train.Fits(current.Rail.Profile.Radius))return new(limit,deceleration,0,0,false);
-        limit=Math.Min(limit,train.CurveSpeed(current.Rail.Profile.Radius));
+        var curveLimit=double.IsPositiveInfinity(current.Rail.Profile.Radius)
+            ?double.PositiveInfinity:train.CurveSpeed(current.Rail.Profile.Radius);
+        limit=Math.Min(limit,curveLimit);
 
         void Slice(int first,int last,double offset,bool currentSlice)
         {
@@ -147,14 +174,22 @@ public sealed class RailJourneyPlan
                 {obstacle=Math.Max(0,walked-nose-.25);station=0;buffer=false;return;}
                 if(double.IsPositiveInfinity(run.Radius)&&run.Grade==0)continue;
                 deceleration=Math.Min(deceleration,train.BrakeDeceleration(run.Grade));
+                if(double.IsPositiveInfinity(run.Radius))continue;
                 var curve=train.CurveSpeed(run.Radius);
-                limit=Math.Min(limit,Math.Sqrt(curve*curve+2*deceleration*Math.Max(0,walked-nose)));
+                // Use a service-braking envelope for a traversable curve.
+                // Physical emergency braking still protects stops/track ends.
+                var approach=CurveBraking.ApproachDeceleration(deceleration);
+                var bound=Math.Sqrt(curve*curve+2*approach*Math.Max(0,walked-nose));
+                curveLimit=Math.Min(curveLimit,bound);
+                limit=Math.Min(limit,bound);
             }
             foreach(var stop in stops)
             {
-                if(stop.Node<first || stop.Node>last || nodes[stop.Node].Start+offset-position>=horizon)continue;
-                var ahead=stop.Position+offset-position;
-                var remaining=ahead-nose-(stop.Buffer?.194:0);
+                if(stop.Node<first || stop.Node>last)continue;
+                var target=NextStopPosition(stop,position,nose,offset);
+                if(nodes[stop.Node].Start+target-stop.Position-position>=horizon)continue;
+                var ahead=target-position;
+                var remaining=ahead-nose-(stop.Buffer?RailGuidance.BufferStopMargin:0);
                 if(stop.Buffer?ahead<0:stop.Id==departedStation || remaining<-.4)continue;
                 if(Math.Max(0,remaining)>=obstacle)continue;
                 obstacle=Math.Max(0,remaining);station=stop.Id;buffer=stop.Buffer;
@@ -171,6 +206,6 @@ public sealed class RailJourneyPlan
             var remaining=Math.Max(0,Length-position-nose-.2);
             if(remaining<obstacle){obstacle=remaining;station=0;buffer=false;}
         }
-        return new(limit,deceleration,obstacle,station,buffer);
+        return new(limit,deceleration,obstacle,station,buffer,curveLimit);
     }
 }

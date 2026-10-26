@@ -22,38 +22,38 @@ using Eco.Shared.Serialization;
 using Eco.Shared.SharedTypes;
 
 [Serialized, LocDisplayName("Standard Rail - Wide Turn (3x3)"), Weight(12000)]
+[LocDescription("A broad railway curve that gives longer locomotives and wagons room to turn. Occupies a three-by-three area and joins Standard Rail.")]
 public sealed class WideRailTurnItem : WorldObjectItem<WideRailTurnObject> { }
-[Serialized, RequireComponent(typeof(PropertyAuthComponent))]
+[Serialized, RequireComponent(typeof(PropertyAuthComponent)), RequireComponent(typeof(RailInfrastructurePickupComponent)), RequireComponent(typeof(RailTurnComponent))]
 public sealed class WideRailTurnObject : WorldObject, IRepresentsItem
 {
     static WideRailTurnObject() => AddOccupancy<WideRailTurnObject>(Enumerable.Range(-1, 3).SelectMany(x => Enumerable.Range(-1, 3)
         .Select(z => new BlockOccupancy(new Eco.Shared.Math.Vector3i(x, 0, z), typeof(BuildingWorldObjectBlock)))).ToList());
     public Type RepresentedItemType => typeof(WideRailTurnItem);
     public override LocString DisplayName => Localizer.DoStr("Standard Rail - Wide Turn (3x3)");
-    protected override void Initialize() { base.Initialize(); RailInfrastructure.Register(this); }
     protected override void OnDestroy()
     {
         var cells=WorldOccupancy?.ToArray();var id=ObjectID;
-        RailInfrastructure.Remove(this);base.OnDestroy();
+        base.OnDestroy();
         if(cells!=null)foreach(var cell in cells)
             if(Eco.World.World.GetBlock(cell) is WorldObjectBlock block && block.WorldObjectHandle.Id==id)
                 Eco.World.World.DeleteBlock(cell);
     }
 }
 [Serialized,LocDisplayName("Tram Rail - Wide Turn (3x3)"),Weight(12000)]
+[LocDescription("A broad curve for guiding a tram smoothly around a street corner. Occupies a three-by-three area and joins Tram Rail.")]
 public sealed class TramWideRailTurnItem : WorldObjectItem<TramWideRailTurnObject> { }
-[Serialized,RequireComponent(typeof(PropertyAuthComponent))]
+[Serialized,RequireComponent(typeof(PropertyAuthComponent)),RequireComponent(typeof(RailInfrastructurePickupComponent)),RequireComponent(typeof(RailTurnComponent))]
 public sealed class TramWideRailTurnObject : WorldObject,IRepresentsItem
 {
     static TramWideRailTurnObject()=>AddOccupancy<TramWideRailTurnObject>(Enumerable.Range(-1,3).SelectMany(x=>Enumerable.Range(-1,3)
         .Select(z=>new BlockOccupancy(new Eco.Shared.Math.Vector3i(x,0,z),typeof(BuildingWorldObjectBlock)))).ToList());
     public Type RepresentedItemType=>typeof(TramWideRailTurnItem);
     public override LocString DisplayName=>Localizer.DoStr("Tram Rail - Wide Turn (3x3)");
-    protected override void Initialize(){base.Initialize();RailInfrastructure.Register(this);}
     protected override void OnDestroy()
     {
         var cells=WorldOccupancy?.ToArray();var id=ObjectID;
-        RailInfrastructure.Remove(this);base.OnDestroy();
+        base.OnDestroy();
         if(cells!=null)foreach(var cell in cells)
             if(Eco.World.World.GetBlock(cell) is WorldObjectBlock block && block.WorldObjectHandle.Id==id)
                 Eco.World.World.DeleteBlock(cell);
@@ -61,12 +61,13 @@ public sealed class TramWideRailTurnObject : WorldObject,IRepresentsItem
 }
 [RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class TramWideRailTurnRecipe:MinecartRailRecipeFamily
-{public TramWideRailTurnRecipe()=>Configure(MinecartRailRecipes.Make<TramWideRailTurnItem>("Tram Rail - Wide Turn (3x3)",4,6,2,skillType:typeof(IndustrySkill)),"Tram Rail - Wide Turn (3x3)",typeof(TramWideRailTurnRecipe),120,3,skillType:typeof(IndustrySkill));}
+{public TramWideRailTurnRecipe()=>Configure(MinecartRailRecipes.Make<TramWideRailTurnItem>("Tram Rail - Wide Turn (3x3)",4,6,2,skillType:typeof(IndustrySkill)),"Tram Rail - Wide Turn (3x3)",typeof(TramWideRailTurnRecipe),120,1.5f,skillType:typeof(IndustrySkill));}
 [RequiresSkill(typeof(BasicEngineeringSkill), 3)]
 public sealed class WideRailTurnRecipe : MinecartRailRecipeFamily
-{ public WideRailTurnRecipe() => this.Configure(MinecartRailRecipes.Make<WideRailTurnItem>("Standard Rail - Wide Turn (3x3)", 4, 0, 2, hewnLogs: 6), "Standard Rail - Wide Turn (3x3)", typeof(WideRailTurnRecipe), 120, 3); }
+{ public WideRailTurnRecipe() => this.Configure(MinecartRailRecipes.Make<WideRailTurnItem>("Standard Rail - Wide Turn (3x3)", 4, 0, 2, hewnLogs: 6), "Standard Rail - Wide Turn (3x3)", typeof(WideRailTurnRecipe), 120, 1.5f); }
 
 [Serialized, LocDisplayName("Train Station"), Weight(10000)]
+[LocDescription("A railway stop for loading cargo and organizing train departures. Set waiting conditions and destinations to keep goods moving between stations. Crafted at the Railworks Workbench using Basic Engineering.")]
 public sealed class TrainStationItem : WorldObjectItem<TrainStationObject> { }
 [Serialized, RequireComponent(typeof(PropertyAuthComponent)), RequireComponent(typeof(TrainStationComponent)), RequireComponent(typeof(RailAutomationComponent))]
 public sealed class TrainStationObject : WorldObject, IRepresentsItem
@@ -75,11 +76,12 @@ public sealed class TrainStationObject : WorldObject, IRepresentsItem
     public Type RepresentedItemType => typeof(TrainStationItem);
     public override LocString DisplayName => Localizer.DoStr("Train Station");
 }
-[RequiresSkill(typeof(MechanicsSkill), 3)]
+[RequiresSkill(typeof(BasicEngineeringSkill), 3)]
 public sealed class TrainStationRecipe : MinecartRailRecipeFamily
-{ public TrainStationRecipe() => this.Configure(MinecartRailRecipes.Make<TrainStationItem>("Train Station", 8, 12, skillType:typeof(MechanicsSkill)), "Train Station", typeof(TrainStationRecipe), 100, 4, skillType:typeof(MechanicsSkill)); }
+{ public TrainStationRecipe() => this.Configure(MinecartRailRecipes.Make<TrainStationItem>("Train Station", 8, 12, skillType:typeof(BasicEngineeringSkill)), "Train Station", typeof(TrainStationRecipe), 100, 2, skillType:typeof(BasicEngineeringSkill)); }
 
 [Serialized, LocDisplayName("Broken Wooden Rail"), Weight(1000)]
+[LocDescription("Wooden rails splintered beneath an excessive load. Chop them with an axe to recover wood pulp and clear the line.")]
 public sealed class BrokenWoodenTrackItem : WorldObjectItem<BrokenWoodenTrackObject> { }
 [Serialized, RequireComponent(typeof(PropertyAuthComponent)), RequireComponent(typeof(BrokenRailComponent))]
 public sealed class BrokenWoodenTrackObject : WorldObject, IRepresentsItem
@@ -113,9 +115,10 @@ public sealed class BrokenRailComponent : WorldObjectComponent, IHasEnvVars, IPi
     {
         lock (this.gate)
         {
-            if (this.Parent.IsDestroyed || !this.HoldingRailAxe(player.User) || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess)
-                || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
-            var axe=(AxeItem)player.User.Inventory.Toolbar.SelectedItem;
+            if (player == null || this.Parent == null || this.Parent.IsDestroyed
+                || player.User.Inventory.Toolbar.SelectedItem is not AxeItem axe
+                || !this.Parent.IsAuthorized(player.User, AccessType.FullAccess)
+                || !RailWorldDistance.Within(player.User.Position, this.Parent.Position, 3)) return;
             using(var pack=new GameActionPack())
             {
                 pack.AddToInventory(player.User.Inventory, Item.Get<WoodPulpItem>(), 4, player.User);
@@ -126,3 +129,5 @@ public sealed class BrokenRailComponent : WorldObjectComponent, IHasEnvVars, IPi
         }
     }
 }
+
+

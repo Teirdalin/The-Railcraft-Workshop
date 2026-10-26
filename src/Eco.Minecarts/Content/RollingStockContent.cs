@@ -73,14 +73,15 @@ public abstract class RollingStockRecipe<T> : RecipeFamily where T : Item, new()
     {
         var spec = RailVehicleSpec.Find(typeof(T).Name.Replace("Item", ""));
         var wood = spec.Tier == "Wood";
-        var steel = spec.Tier is "Steel" or "Industry";
         var skill = RailRecipeWorkshops.VehicleSkill(this.GetType());
         var recipe = new Recipe();
         var cost=RailEconomy.BuildCost(spec.Key);
         // Full-size stock uses structural lumber; compact vehicles retain boards.
         var ingredients = new List<IngredientElement> { new(spec.Tier == "Industry" ? "Lumber" : "WoodBoard", cost.Timber, skill) };
         if (wood) ingredients.Add(new IngredientElement("HewnLog", cost.HewnLogs, skill));
-        else ingredients.Add(new IngredientElement(steel ? typeof(SteelBarItem) : typeof(IronBarItem), cost.Metal, skill));
+        // Train construction belongs to Mechanics. Legacy spec tier names also
+        // describe vehicle size; they must not require Industry-only steel plates.
+        else ingredients.Add(new IngredientElement(typeof(IronPlateItem), cost.Metal, skill));
         if (cost.Stoves>0) ingredients.Add(new IngredientElement(typeof(CastIronStoveItem), cost.Stoves, true));
         if (cost.Fabric>0) ingredients.Add(new IngredientElement("Fabric", cost.Fabric, skill));
         recipe.Init(spec.Key, Localizer.DoStr(spec.Name), ingredients, [], [new CraftingElement<T>()]);

@@ -75,10 +75,10 @@ public sealed class TrainPerformance
     }
     // Additional length adds air/rolling losses; over-capacity speed falls smoothly.
     public double DriveForce(double speed, double gradeAlongDrive = 0) { using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Vehicle Simulation/Physics/DriveForce");
-        // Tram acceleration is a comfort limit, not its motor's hill traction.
+        // Motor acceleration is a comfort limit, not its available hill traction.
         // Compensate only opposing gravity; adhesion and motor watts still cap
         // force, and the caller still scales it by actual cable power.
-        var accelerationLimit=engine.MaximumAcceleration+(engine.Tram?9.80665*Math.Max(0,gradeAlongDrive):0);
+        var accelerationLimit=engine.MaximumAcceleration+(engine.Powered?9.80665*Math.Max(0,gradeAlongDrive):0);
         return Math.Min(Mass * accelerationLimit,
         Math.Min(engine.TractionN, engine.PowerWatts / Math.Max(1, Math.Abs(speed))))
         * Math.Clamp(1 - Math.Pow(Math.Abs(speed) / Math.Max(.1, SpeedLimit), 4), 0, 1); }
@@ -105,3 +105,4 @@ public readonly record struct DepartureRules(bool Timed, double Seconds, bool At
         return enabled.Count != 0 && (All ? enabled.All(x => x) : enabled.Any(x => x));
     }
 }
+

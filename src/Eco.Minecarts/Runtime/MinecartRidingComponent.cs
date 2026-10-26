@@ -46,7 +46,7 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
     public void Ride(Player player, InteractionTriggerInfo trigger, InteractionTarget target)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Passengers/Attachment access and condition/Ride", this.Parent);
-        if (!target.ContainsParameter("MinecartStorage") || this.Parent.IsDestroyed || Vector3.Distance(player.User.Position, this.Parent.Position) > 3) return;
+        if (player == null || !target.ContainsParameter("MinecartStorage") || this.Parent.IsDestroyed || !RailWorldDistance.Within(player.User.Position, this.Parent.Position, 3)) return;
         if (this.Mounts.MountedPlayers.Contains(player)) { this.Mounts.TryDismountPlayer(player); return; }
         if (!this.Parent.IsAuthorized(player.User, AccessType.ConsumerAccess)) return;
         if (player.MountManager.IsMounted) { return; }
@@ -60,7 +60,7 @@ public sealed class MinecartRidingComponent : WorldObjectComponent
             this.approvedPlayer = player;
             this.approvedSeat = Eco.Minecarts.Track.RailGuidance.SelectPassengerSeat(
                 player.User.Rotation.RotateVector(Vector3.UnitZ), this.Parent.Rotation.RotateVector(Vector3.UnitZ),
-                player.User.Position - this.Parent.Position);
+                RailWorldDistance.Delta(player.User.Position, this.Parent.Position));
             try
             {
                 this.Parent.CloseUIForAll(true);

@@ -11,7 +11,7 @@ internal static class RailRecipeWorkshops
             => typeof(WainwrightTableObject),
         nameof(PassengerLocomotiveRecipe) or nameof(FreightLocomotiveRecipe) or nameof(LargeTrainEngineRecipe)
             or nameof(LargeCargoCarRecipe) or nameof(LargePassengerCarRecipe) or nameof(LargeCoalTenderRecipe)
-            => typeof(MachinistTableObject),
+            => typeof(AssemblyLineObject),
         nameof(HeritageTramRecipe) or nameof(RollerCoasterCartRecipe)
             or nameof(ElectricalRailChainDriveRecipe) or nameof(ElectricalTramCableDriveRecipe)
             => typeof(ElectricMachinistTableObject),
@@ -21,7 +21,7 @@ internal static class RailRecipeWorkshops
     {
         var table=For(recipe);
         return table==typeof(WainwrightTableObject)?typeof(BasicEngineeringSkill)
-            :table==typeof(MachinistTableObject)?typeof(MechanicsSkill)
+            :table==typeof(AssemblyLineObject)?typeof(MechanicsSkill)
             :table==typeof(ElectricMachinistTableObject)?typeof(IndustrySkill)
             :throw new InvalidOperationException("Unclassified rail vehicle recipe: "+recipe.Name);
     }

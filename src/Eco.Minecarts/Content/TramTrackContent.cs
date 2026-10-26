@@ -19,7 +19,7 @@ public class TramTrackBlock : Block, IRepresentsItem
 }
 
 [Serialized, LocDisplayName("Tram Rail")]
-[LocDescription("Street-scale rail for automated trams. Connect a mechanical or electrical Tram Cable Drive to its power grid and press Connect. Hammer-select straight, corner, buffer and four-stage slope forms; road and dirt ramps select matching overlays. Trams run only on powered Tram Rail and need no onboard fuel.")]
+[LocDescription("Rails for bringing tram service into the streets. Use a hammer to choose curves, buffers, and slopes, or fit them to road and dirt ramps. Connect a powered Tram Cable Drive to move trams along the line.")]
 [MaxStackSize(20), Weight(1800), ResourcePile, Tag("Constructable"), Tier(1)]
 [Ecopedia("Blocks", "Building Materials", createAsSubPage: true)]
 public sealed class TramTrackItem : BlockItem<TramTrackBlock>
@@ -33,7 +33,7 @@ public sealed class TramTrackRecipe : MinecartRailRecipeFamily
 {
     public TramTrackRecipe() => this.Configure(
         MinecartRailRecipes.Make<TramTrackItem>("Tram Rail", 3, 2, 4, fixedMaterials: true, skillType:typeof(IndustrySkill)),
-        "Tram Rail", typeof(TramTrackRecipe), 80, 1.25f, skillType:typeof(IndustrySkill));
+        "Tram Rail", typeof(TramTrackRecipe), 80, .625f, skillType:typeof(IndustrySkill));
 }
 
 [Serialized, Solid, Tag("Constructable"), Tag(BlockTags.PartialStack)]
@@ -310,3 +310,4 @@ public sealed class TramTrackSlope4270Block : Block, IRepresentsItem, IWaterLogg
 {
     public Type RepresentedItemType => typeof(TramTrackItem);
 }
+

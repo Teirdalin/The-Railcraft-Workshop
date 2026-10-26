@@ -18,7 +18,8 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-[Serialized] public sealed class PassengerCarObject : RollingStockObject
+[Serialized] [Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.BasicEngineeringSkill),3)]
+public sealed class PassengerCarObject : RollingStockObject
 {
     public static RailVehicleSpec DefaultSpecification {get;} = new("PassengerCar", "Passenger Car", 650, 100, 4, 2.4f, 1.2f, .5f, 30, 0, 0, 2200, 0, PassengerSeats: 4, Model: "Passenger");
     public override RailVehicleSpec RailSpec => RailVehicleBalances.Resolve(DefaultSpecification);
@@ -26,7 +27,7 @@ using Eco.Shared.Serialization;
     static PassengerCarObject() => AddOccupancy<PassengerCarObject>([]);
 }
 
-[LocDescription("Crafted at the Wainwright Table using Basic Engineering.")]
+[LocDescription("A railway carriage with room for four passengers. Couple it to a locomotive to carry travelers between stations. Crafted at the Wainwright Table using Basic Engineering.")]
 [Serialized, LocDisplayName("Passenger Car"), Weight(15000)] public sealed class PassengerCarItem : RailModuleItem<PassengerCarObject> { }
 
 [RequiresSkill(typeof(BasicEngineeringSkill), 3)] public sealed class PassengerCarRecipe : RollingStockRecipe<PassengerCarItem> { }

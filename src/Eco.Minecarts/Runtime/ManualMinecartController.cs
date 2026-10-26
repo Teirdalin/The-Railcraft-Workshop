@@ -12,7 +12,7 @@ namespace Eco.Minecarts.Runtime;
 // component is an interaction/save adapter only for these two vehicle types.
 internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
 {
-    internal static bool Applies(RailVehicleObject vehicle)=>vehicle.Capabilities.HasFlag(RailVehicleCapabilities.ManualHandle);
+    internal static bool Applies(RailVehicleObject vehicle)=>(vehicle.Capabilities & RailVehicleCapabilities.ManualHandle) != 0;
     private RailVehicleObject Cart=>(RailVehicleObject)adapter.Parent;
     private RailCouplingComponent Coupling=>Cart.GetComponent<RailCouplingComponent>();
     internal ManualCartRailState? State {get;private set;}
@@ -67,7 +67,7 @@ internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
         if(!Bind(placement)){ReleaseHandle();Status="No supporting rail; stopped";Publish();return;}
         if(Holder is {} held&&(!held.User.IsOnline||held.MountManager.IsMounted
             ||!Cart.IsAuthorized(held.User,AccessType.FullAccess)
-            ||Vector3.DistanceSquared(held.User.Position,Cart.Position)>9))ReleaseHandle();
+            ||!RailWorldDistance.Within(held.User.Position,Cart.Position,3)))ReleaseHandle();
         var mass=Coupling.Performance.Mass;
         var steps=Math.Max(1,(int)Math.Ceiling(elapsed/.02));
         for(var i=0;i<steps&&elapsed>0;i++)
@@ -76,12 +76,14 @@ internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
             if(!RailInfrastructure.Supports(at.Rail,mass)
                 ||RailSwitchComponent.At(at.Rail.Cell) is {} points&&!points.AdmitTrailing(at.Rail,Coupling))
             {Stop();Status="Track unavailable or switch occupied";break;}
+            var repairRequired=Coupling.RepairRequired;
+            if(repairRequired){ReleaseHandle();adapter.Handbrake=true;Status="Repair required";}
             var tangent=Tangent(at);var grade=Coupling.ConsistGrade(tangent.Y,at.Facing);
             var chain=Coupling.ChainTraction(at.Rail,at.Facing,at.Speed,grade);
-            var drive=chain.Force;
+            var drive=repairRequired?0:chain.Force;
             if(Holder is {} player)
             {
-                var error=Vector3.Dot(player.User.Position-Point(at),tangent)-handleOffset;
+                var error=Vector3.Dot(RailWorldDistance.Delta(player.User.Position,Point(at)),tangent)-handleOffset;
                 var walk=Vector3.Dot(player.BaseVelocity,tangent);
                 if(!float.IsFinite(walk)||Math.Abs(walk)>6)walk=0;
                 drive+=ManualCartRailMotion.HandleForce(mass,grade,at.Speed,walk,error);
@@ -89,8 +91,9 @@ internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
             var tuning=new MinecartTuning(EmptyMassKg:Cart.RailSpec.EmptyKg,MaximumHandbrakeForceN:Coupling.Performance.BrakingForce,
                 DerailLateralAcceleration:double.PositiveInfinity);
             State=ManualCartRailMotion.Step(at,new(mass-Cart.RailSpec.EmptyKg,drive,adapter.Handbrake?1:0,grade,at.Rail.Profile.Curvature),
-                tuning,elapsed/steps,Holder!=null?1.5:Cart.RailSpec.MaximumSpeed,Next,
+                tuning,elapsed/steps,(Holder!=null?1.5:Cart.RailSpec.MaximumSpeed)*Coupling.MaintenanceSpeedFactor,Next,
                 (rail,t,travel)=>Coupling.LimitTrainTravel(rail,t,RailGuidance.LimitBufferTravel(rail,t,travel,Next,Cart.CouplerOffset+.194f)));
+            adapter.UpdateStationContacts();
             MinecartDumpRailComponent.TryUnload(State.Value.Rail.Cell,Cart);
         }
         Publish();
@@ -106,10 +109,10 @@ internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
     internal bool ToggleHandle(Player player,int end)
     {
         if(Holder==player){ReleaseHandle();return true;}
-        if(Holder!=null||player.MountManager.IsMounted||!Coupling.CanBoard||!Coupling.EndAvailable(end)||!Bind(true)
+        if(Holder!=null||Coupling.RepairRequired||player.MountManager.IsMounted||!Coupling.CanBoard||!Coupling.EndAvailable(end)||!Bind(true)
             ||RailCouplingComponent.LiveVehicles.Any(c=>c!=Coupling&&c.Parent.GetComponent<MinecartMotionComponent>()?.ManualCart?.Holder==player))return false;
         // A held cart is the consist's driver, without mounting a dynamic body.
-        Holder=player;handleOffset=Vector3.Dot(player.User.Position-Point(State!.Value),Tangent(State.Value));
+        Holder=player;handleOffset=Vector3.Dot(RailWorldDistance.Delta(player.User.Position,Point(State!.Value)),Tangent(State.Value));
         adapter.Handbrake=false;lastTick=DateTime.UtcNow;return true;
     }
     internal void Shove(Player player)
@@ -119,18 +122,18 @@ internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
     }
     internal void ApplyShove(Player player,RailCouplingComponent touched)
     {
-        if(player==null||Holder!=null||!Bind(false)||player.MountManager.IsMounted
-            ||Vector3.Distance(player.User.Position,touched.Parent.Position)>3
+        if(player==null||touched.Parent.IsDestroyed||Holder!=null||!Bind(false)||player.MountManager.IsMounted
+            ||!RailWorldDistance.Within(player.User.Position,touched.Parent.Position,3)
             ||Coupling.FacingRelativeTo(touched)==0||Coupling.AwaitingLoad
             ||Coupling.Group().Any(c=>!c.Parent.IsAuthorized(player.User,AccessType.FullAccess)))return;
         Nudge(touched,player.User.Position);
     }
     internal void Nudge(RailCouplingComponent touched,Vector3 playerPosition)
     {
-        if(Holder!=null||!Bind(false)||Coupling.FacingRelativeTo(touched)==0)return;
+        if(Holder!=null||Coupling.RepairRequired||!Bind(false)||Coupling.FacingRelativeTo(touched)==0)return;
         var now=DateTime.UtcNow;if((now-lastShove).TotalSeconds<.8)return;
         var touchedCart=touched.Parent;
-        var direction=RailGuidance.SelectShoveDirection(playerPosition,touchedCart.Position,touchedCart.Rotation.RotateVector(Vector3.UnitZ))
+        var direction=RailWorldDistance.ShoveDirection(playerPosition,touchedCart.Position,touchedCart.Rotation.RotateVector(Vector3.UnitZ))
             *Coupling.FacingRelativeTo(touched)*State!.Value.Facing;
         lastShove=now;adapter.Handbrake=false;
         State=State.Value with {Speed=Math.Clamp(State.Value.Speed+direction*180/Coupling.Performance.Mass,-12,12)};
@@ -159,7 +162,10 @@ internal sealed class ManualMinecartController(MinecartMotionComponent adapter)
         if(State is {} at)
         {
             Cart.Position=Point(at);Cart.Rotation=Eco.Shared.Math.Quaternion.LookRotation(Tangent(at)*at.Facing);
-            Status=$"{(Holder!=null?"Walking handle":Coupling.IsFollower?"Coupled follower":Math.Abs(at.Speed)<.001?"Stopped":"Coasting")}; server rail authority";
+            // Publish also runs for parked/sleeping carts and coupled followers.
+            // Cargo added after stopping on a dump rail must still be noticed.
+            MinecartDumpRailComponent.TryUnload(at.Rail.Cell,Cart);
+            Status=Coupling.RepairRequired?"Repair required; server rail authority":$"{(Holder!=null?"Walking handle":Coupling.IsFollower?"Coupled follower":Math.Abs(at.Speed)<.001?"Stopped":"Coasting")}; server rail authority";
         }
         Cart.SetRailGuidance(true);Cart.PublishRailPose(Velocity);
         var sound=CartSound.AtSpeed(Velocity.Length());

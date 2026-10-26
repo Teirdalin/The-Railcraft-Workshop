@@ -81,8 +81,11 @@ internal static class TrackWorld
         if (cache.TryGetValue(key, out var cached)) return cached;
         // Keep retained scratch capacity bounded even on a long route.
         if (cache.Count >= 256) return NearUncached(position, coaster);
+        var revision = RailSimulationFrame.Revision;
         var result = NearUncached(position, coaster).ToArray();
-        cache[key] = result;
+        // Reads inside the enumeration can advance the frame after an edit.
+        // Do not retain a mixed observation in that frame's newly cleared cache.
+        if (revision == RailSimulationFrame.Revision) cache[key] = result;
         return result;
     }
     private static IEnumerable<VoxelRail> NearUncached(Vector3 position, bool? coaster)
@@ -277,7 +280,7 @@ internal static class TrackWorld
         // A coaster station joins its two rail sockets into one conductive run,
         // but it has no lift chain and must not consume power or pull a cart.
         var pending = new Queue<VoxelRail>();
-        pending.Enqueue(seed);
+        pending.Enqueue(new(RailPowerConnectionComponent.PhysicalCell(seed.Cell),seed.Profile));
         while (pending.TryDequeue(out var rail))
         {
             if (!visited.Add(rail.Cell)) continue;
@@ -289,9 +292,11 @@ internal static class TrackWorld
             {
                 // Ambiguous conductive branches remain unpowered until the
                 // topology is made explicit; an ordinary rail is never a wire.
-                var next = Neighbors(rail, end).Where(n => Conducts(n.Rail) && !visited.Contains(n.Rail.Cell))
-                    .DistinctBy(n => n.Rail.Cell).Take(2).ToArray();
-                if (next.Length == 1) pending.Enqueue(next[0].Rail);
+                // Match ports in one continuous image before identifying the
+                // physical hardware. A closed run must not revisit world images.
+                var next = Neighbors(rail, end).Select(n => new VoxelRail(RailPowerConnectionComponent.PhysicalCell(n.Rail.Cell),n.Rail.Profile))
+                    .Where(n => Conducts(n) && !visited.Contains(n.Cell)).DistinctBy(n => n.Cell).Take(2).ToArray();
+                if (next.Length == 1) pending.Enqueue(next[0]);
             }
         }
         return powered;
@@ -305,7 +310,7 @@ internal static class TrackWorld
         if(seed.Profile.Shape==null || seed.Profile.Nearest(drivePosition-seed.Cell.Origin).Distance>2.5f) return [];
         var connected=new HashSet<RailCell>();
         var pending=new Queue<RailCell>();
-        pending.Enqueue(seed.Cell);
+        pending.Enqueue(RailPowerConnectionComponent.PhysicalCell(seed.Cell));
         while(pending.TryDequeue(out var cell))
         {
             if(!connected.Add(cell)) continue;
@@ -313,9 +318,14 @@ internal static class TrackWorld
             // A bounded network is easier to diagnose than an accidentally
             // truncated one whose far end appears powered for no reason.
             if(connected.Count>4096) return [];
+            // NetworkNeighbors resolves continuous port geometry. Membership
+            // and the unchanged search budget count installed physical rails.
             foreach(var neighbor in NetworkNeighbors(cell))
-                if(!connected.Contains(neighbor) && Read(neighbor) is { } rail && rail.Profile.Tram)
-                    pending.Enqueue(neighbor);
+            {
+                var physical=RailPowerConnectionComponent.PhysicalCell(neighbor);
+                if(!connected.Contains(physical) && Read(physical) is { } rail && rail.Profile.Tram)
+                    pending.Enqueue(physical);
+            }
         }
         return connected;
     }

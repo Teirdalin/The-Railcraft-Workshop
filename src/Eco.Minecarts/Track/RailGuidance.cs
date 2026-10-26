@@ -47,6 +47,13 @@ public static class RailGuidance
         return Vector3.Dot(entryOffset, cartForward) > 0 ? 2 : 1;
     }
     public const float BufferClearance = 1f; // .87 m nose + .075 m buffer half-depth + native correction margin.
+    public const float BufferT = .8f;
+    public const double BufferStopMargin = .194;
+
+    // A station's leading-nose target must precede the same buffer lip used
+    // by journey braking. A beam already behind this cursor permits departure.
+    public static bool CanReachStop(VoxelRail rail,float fromT,float stopT,int direction)=>rail.Profile.Shape!="Stopper"
+        || (BufferT-(double)fromT)*direction<0 || (BufferT-(double)stopT)*direction*rail.Profile.Length>=BufferStopMargin;
 
     public static double LimitBufferTravel(VoxelRail rail, float t, double travel,
         Func<VoxelRail, int, (VoxelRail Rail, int End)?> neighbor, float clearance = BufferClearance)
@@ -62,7 +69,7 @@ public static class RailGuidance
             // The exported buffer beam is at local z=.30, i.e. t=.80.
             if (rail.Profile.Shape == "Stopper")
             {
-                var ahead = (.8f * rail.Profile.Length - distance) * localDirection;
+                var ahead = (BufferT * rail.Profile.Length - distance) * localDirection;
                 if (ahead >= 0)
                     return direction * Math.Min(Math.Abs(travel), Math.Max(0, walked + ahead - clearance));
             }

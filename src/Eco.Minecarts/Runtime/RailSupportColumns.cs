@@ -3,23 +3,33 @@ using Eco.Minecarts.Track;
 using Eco.Shared.Math;
 using Eco.World.Blocks;
 using Eco.Shared.SharedTypes;
+using System.Collections.Concurrent;
 namespace Eco.Minecarts.Runtime;
 
 /// <summary>Support columns are terrain blocks, not interactive objects. They remain hammer-snappable.</summary>
 public sealed class RailSupportColumns:IModInit
 {
     private static int subscribed;
+    private readonly record struct SupportType(bool Valid,string Tier,string Part);
+    private static readonly ConcurrentDictionary<Type,SupportType> SupportTypes = new();
     public static void PostInitialize()
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/PostInitialize");if(Interlocked.Exchange(ref subscribed,1)==0)Eco.World.World.OnBlockChanged.Add(Changed);}
     public static bool TrySupport(Type type,out string tier,out string part)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/TrySupport");
-        var name=type.Name;tier="";part="";
-        if(!name.StartsWith("RailSupport")||!name.EndsWith("Block")||name.Contains("Stacked"))return false;
+        // Block names and their tier/part are immutable. Never cache whether a
+        // column is currently grounded: terrain changes must remain immediate.
+        var support=SupportTypes.GetOrAdd(type,static t=>Describe(t));
+        tier=support.Tier;part=support.Part;return support.Valid;
+    }
+    private static SupportType Describe(Type type)
+    {
+        var name=type.Name;
+        if(!name.StartsWith("RailSupport")||!name.EndsWith("Block")||name.Contains("Stacked"))return new(false,"","");
         foreach(var candidate in new[]{"Wood","Iron","Steel"})if(name.StartsWith("RailSupport"+candidate))
-        {tier=candidate;part=name[(11+candidate.Length)..^5];return part.StartsWith("Base")||part.StartsWith("Middle")||part.StartsWith("Top");}
-        return false;
+        {var part=name[(11+candidate.Length)..^5];return new(part.StartsWith("Base")||part.StartsWith("Middle")||part.StartsWith("Top"),candidate,part);}
+        return new(false,"","");
     }
     public static int Reach(string tier){ using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Rail Entities/Support and block events/Reach"); return tier switch{"Wood"=>6,"Iron"=>12,"Steel"=>18,_=>0}; }
     public static int GroundedReach(Vector3i top,Func<Vector3i,Type?> read)

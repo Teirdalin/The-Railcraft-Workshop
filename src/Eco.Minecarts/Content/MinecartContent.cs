@@ -22,7 +22,7 @@ using Eco.Shared.Utils;
 
 [Serialized]
 [LocDisplayName("Minecart")]
-[LocDescription("A narrow-gauge iron cart for hauling materials on rails. Crafted at the Wainwright Table using Basic Engineering.")]
+[LocDescription("A sturdy iron cart for moving ore, stone, and other heavy materials along the railway. Holds larger stacks of mined materials. Crafted at the Wainwright Table using Basic Engineering.")]
 [IconGroup("World Object Minimap")]
 [Weight(9000)]
 [SalvageCost(typeof(IronScrap), 8.0f, typeof(WoodScrap), 2.0f)]
@@ -56,8 +56,8 @@ public sealed class MinecartRecipe : RecipeFamily
             displayName: Localizer.DoStr("Minecart"),
             ingredients:
             [
-                new IngredientElement(typeof(IronWheelItem), 2, true),
-                new IngredientElement(typeof(IronBarItem), 12, typeof(BasicEngineeringSkill)),
+                new IngredientElement(typeof(MinecartWheelItem), 4, true),
+                new IngredientElement(typeof(IronPlateItem), 8, typeof(BasicEngineeringSkill)),
                 new IngredientElement("WoodBoard", 8, typeof(BasicEngineeringSkill)),
             ],
             garbages: [],
@@ -68,7 +68,7 @@ public sealed class MinecartRecipe : RecipeFamily
         this.LaborInCalories = CreateLaborInCaloriesValue(150, typeof(BasicEngineeringSkill));
         this.CraftMinutes = CreateCraftTimeValue(
             beneficiary: typeof(MinecartRecipe),
-            start: 5,
+            start: 2.5f,
             skillType: typeof(BasicEngineeringSkill));
         this.Initialize(Localizer.DoStr("Minecart"), typeof(MinecartRecipe));
         CraftingComponent.AddRecipe(RailRecipeWorkshops.For(typeof(MinecartRecipe)), this);
@@ -89,9 +89,10 @@ public sealed class MinecartRecipe : RecipeFamily
 [RequireComponent(typeof(Eco.Minecarts.Runtime.MinecartRidingComponent))]
 [RequireComponent(typeof(Eco.Minecarts.Runtime.RailConditionComponent))]
 [Ecopedia("Crafted Objects", "Vehicles", subPageName: "Minecart Item")]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.BasicEngineeringSkill),1)]
 public sealed class MinecartObject : Eco.Minecarts.Runtime.RailVehicleObject, IRepresentsItem
 {
-    public static Eco.Minecarts.Physics.RailVehicleSpec DefaultSpecification {get;} = new("Minecart", "Minecart", 280, 2500, 12, 1.612f, .82f, .5f, 18, 0, 0, 4800, 0, Pullable: true);
+    public static Eco.Minecarts.Physics.RailVehicleSpec DefaultSpecification {get;} = new("Minecart", "Minecart", 280, 5000, 12, 1.612f, .82f, .5f, 18, 0, 0, 4800, 0, Pullable: true);
     public override Eco.Minecarts.Runtime.RailVehicleCapabilities Capabilities => Eco.Minecarts.Runtime.RailVehicleCapabilities.ManualHandle;
 
     static MinecartObject() => WorldObject.AddOccupancy<MinecartObject>(new List<BlockOccupancy>());
@@ -117,3 +118,6 @@ public sealed class MinecartObject : Eco.Minecarts.Runtime.RailVehicleObject, IR
             Localizer.DoStr(string.Empty);
     }
 }
+
+
+

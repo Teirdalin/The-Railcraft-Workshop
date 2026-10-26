@@ -17,13 +17,18 @@ using Eco.Shared.Localization;
 using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
-[Serialized, LocDisplayName("Tram Cable Drive"), LocDescription("Connect to a mechanically powered grid beside Tram Rail. The connected rail network conducts traction power to automated trams. Available power determines supported tram load and speed. Crafted at the Railworks Workbench using Industry."), Weight(12000)]
-public sealed class TramCableDriveItem : WorldObjectItem<TramCableDriveObject> { }
+[Serialized, LocDisplayName("Tram Cable Drive"), LocDescription("A mechanical drive that supplies traction to trams through connected Tram Rail. Connect a source of mechanical power; heavier traffic needs more power to keep moving. Crafted at the Railworks Workbench using Industry."), Weight(12000)]
+public sealed class TramCableDriveItem : WorldObjectItem<TramCableDriveObject>
+{
+    // Use the same floor attachment as the other drive cabinets.
+    protected override OccupancyContext GetOccupancyContext => new SideAttachedContext(
+        DirectionAxisFlags.Down, WorldObject.GetOccupancyInfo(WorldObjectType));
+}
 
 [RequiresSkill(typeof(IndustrySkill),3)]
 public sealed class TramCableDriveRecipe : MinecartRailRecipeFamily
 {
-    public TramCableDriveRecipe()=>Configure(MinecartRailRecipes.Make<TramCableDriveItem>("Tram Cable Drive",12,12,woodenGears:2, skillType:typeof(IndustrySkill)),"Tram Cable Drive",typeof(TramCableDriveRecipe),180,6, skillType:typeof(IndustrySkill));
+    public TramCableDriveRecipe()=>Configure(MinecartRailRecipes.Make<TramCableDriveItem>("Tram Cable Drive",12,12,woodenGears:2, skillType:typeof(IndustrySkill)),"Tram Cable Drive",typeof(TramCableDriveRecipe),180,3, skillType:typeof(IndustrySkill));
 }
 
 [Serialized, RequireComponent(typeof(OnOffComponent)), RequireComponent(typeof(PropertyAuthComponent))]
@@ -36,9 +41,21 @@ public class TramCableDriveObject : WorldObject, IRepresentsItem
     private readonly object gate=new();
     private HashSet<RailCell> cells=[];
     private readonly PoweredRailContacts trams=new(2);
-    private float lastDemand=-1;
     private float supportedFraction;
     private bool running;
+    internal void StopPower()
+    {
+        lock(gate)
+        {
+            cells=[];trams.Clear();supportedFraction=0;running=false;
+            PoweredRailDrive.Stop(this);
+            if(ConnectedRails!=0){ConnectedRails=0;this.Changed(nameof(ConnectedRails));}
+            if(ConnectedTrams!=0){ConnectedTrams=0;this.Changed(nameof(ConnectedTrams));}
+            if(RequiredPower!=0){RequiredPower=0;this.Changed(nameof(RequiredPower));}
+            if(AvailablePower!=0){AvailablePower=0;this.Changed(nameof(AvailablePower));}
+            if(Status!="Off"){Status="Off";this.Changed(nameof(Status));}
+        }
+    }
     private bool OwnsRun=>!Drives.Snapshot.Any(d=>d.ID<ID && !d.IsDestroyed && d.Enabled
         && d.GetComponent<RailPowerConnectionComponent>().Connected && d.cells.Overlaps(cells));
     private float RequiredWatts=>GetComponent<RailPowerConnectionComponent>().Connected && OwnsRun && cells.Count>0 && ReadyExceptPower(GetComponent<PowerGridComponent>())
@@ -81,8 +98,10 @@ public class TramCableDriveObject : WorldObject, IRepresentsItem
             AvailablePower=grid==null?0:RailEconomy.SharedCableAllocation(grid.EnergySupply,other,RequiredPower,totalDemand);
             supportedFraction=RequiredPower<=0?0:Math.Clamp(AvailablePower/RequiredPower,0,1);
             var demand=RequiredPower>0 && supportedFraction>0 ? Math.Min(RequiredPower,AvailablePower) : 0;
-            if(Math.Abs(demand-lastDemand)>.01f)
-            { GetComponent<PowerConsumptionComponent>().OverridePowerConsumption(demand);lastDemand=demand; }
+            // Connection invalidation can clear demand between drive ticks.
+            var consumption=GetComponent<PowerConsumptionComponent>();
+            if(Math.Abs(demand-consumption.JoulesPerSecond)>.01f)
+                consumption.OverridePowerConsumption(demand);
             running=OwnsRun && Enabled && cells.Count>0 && grid!=null && GetComponent<PowerGridComponent>().Enabled && supportedFraction>0.05f;
             Status=!Enabled?"Off":cells.Count==0?"No connected Tram Rail":grid==null?(Electrical?"No electrical grid":"No mechanical grid"):
                 !running?"Insufficient power":supportedFraction<.99f?"Reduced cable speed":"Powering tram network";
@@ -97,16 +116,27 @@ public class TramCableDriveObject : WorldObject, IRepresentsItem
     internal static float PowerFor(RailCell cell,int tramId)
     {
         using var _railProfileScope = Eco.Minecarts.Runtime.RailProfile.Measure("Mechanical Power/Vehicle propulsion lookup/PowerFor");
+        cell=RailPowerConnectionComponent.PhysicalCell(cell);
         foreach(var drive in Drives.Snapshot)
         {
             if(drive.IsDestroyed) continue;
             lock(drive.gate)
             {
-                if(!drive.GetComponent<RailPowerConnectionComponent>().Connected || !drive.cells.Contains(cell)||!drive.running) continue;
+                if(!drive.GetComponent<RailPowerConnectionComponent>().Connected || !drive.cells.Contains(cell)) continue;
+                // Waiting trams still load the connected cable during an outage
+                // or brownout. Dropping them would briefly grant idle-load power.
                 drive.trams.Touch(tramId,DateTime.UtcNow);
+                var grid=drive.GetComponent<PowerGridComponent>();
+                // A switch/grid change can arrive between drive ticks. Contacts
+                // stay live, but the previous allocation cannot provide traction.
+                if(!drive.running || !drive.GetComponent<OnOffComponent>().On || !drive.Enabled || !grid.Enabled
+                    || grid.PowerGrid is not {} network || grid.EnergyDemand<=0 || network.EnergySupply<grid.EnergyDemand) continue;
                 return drive.supportedFraction;
             }
         }
         return 0;
     }
 }
+
+
+

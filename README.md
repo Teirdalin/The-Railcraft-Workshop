@@ -1,50 +1,39 @@
 # Railworks Workshop
 
-Rails, minecarts, trains, trams and roller coasters for **Eco 0.14.1.1 beta release-1079**.
+Trains, trams, minecarts, roller coasters and rail infrastructure for **Eco 0.14.2.1 release-1106**.
 
-**Latest packaged version: [0.2.68 prerelease](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.2.68).**
+**Latest release: [0.2.118 prerelease](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/tag/v0.2.118).** Download [Railworks-Workshop-Server-0-2-118.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.118/Railworks-Workshop-Server-0-2-118.zip).
 
-Download [Railworks-Workshop-Server-0-2-68.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.68/Railworks-Workshop-Server-0-2-68.zip) for the server. It contains the matching `Railworks.dll` and `Railworks.unity3d` plus fourteen editable C# files in `Vehicles`. There are no READMEs, installers or client plugins in the server ZIP.
+## What's included
 
-## Server installation
+- Trains, passenger and cargo cars, trams, handcars, minecarts and roller coasters.
+- Stations, routing and conditional automation, passenger fares and station traffic rules.
+- Gradual braking into tight corners, coupled vehicle handling and coaster station guardrails.
+- Rail supports with central standing surfaces, crossings and bell assets in one Unity bundle.
+- Assembly Line train recipes, iron train components and editable vehicle/rail settings.
+- Hidden administrator-spawned Thunderfury with a recreated model and cosmetic lightning impact bindings.
 
-1. Back up your world and current mod files outside `Mods`, then stop the server or close the hosted game.
-2. Copy `Railworks.dll` and `Railworks.unity3d` together into `Eco_Data/Server/Mods/UserCode` (or your dedicated server's `Mods/UserCode`). On a fresh installation, copy the `Vehicles` folder there as well.
-3. On upgrades, preserve customized vehicle files and add missing settings files. Remove old `Eco.Minecarts.dll` / `EcoMinecarts.unity3d` copies and duplicate Railworks installations from `Mods` after backing them up outside that folder.
-4. Restart the server. Always use the DLL and bundle from the same release.
+Version 0.2.118 prevents stale station departures when relevant vehicle state, conditions, rail routes or tram settings change while a reservation is waiting. See [release notes](RELEASE_NOTES.md).
 
-Joining players receive the vehicles, tracks, models and animations through the normal server asset bundle. They need no third-party loader for those features. Existing saved object, item, recipe and prefab identities are retained.
+## Installation
 
-Each vehicle has its own editable `.cs` file. Change capacity, slots, carried-item weight, physical mass and performance constants, then restart Eco. Eco compiles these settings automatically; no SDK or full source build is required. Keep the filenames, classes and keys intact. See the [vehicle customization guide](customization/README.md).
+1. Close Eco and its hosted server, or stop the dedicated server.
+2. Extract the matching `Railworks.dll`, `Railworks.unity3d`, `Vehicles` and `Rails` into server `Mods/UserCode`. Hosted games use `Eco_Data/Server/Mods/UserCode`.
+3. On upgrades, preserve customized settings and add missing files. Remove obsolete `Eco.Minecarts.dll` / `EcoMinecarts.unity3d` and duplicate Railworks installations from `Mods`.
+4. Restart Eco. Always use the DLL and bundle from the same release.
 
-## Original vehicles and coaster guardrails
+The ZIP contains 24 runtime/settings files: one DLL, one unified bundle, fourteen vehicle settings and eight rail settings. Crossing assets are already in the unified bundle. Joining players receive these assets normally and need no third-party loader for the server mod.
 
-Version 0.2.67 animates the original coaster's full padded guardrails and swing arms: they rise for boarding and lower before departure. Cancelled departures can reopen them smoothly. This uses the existing replicated station animation system.
-
-Version 0.2.68 docks the leading coaster car at the loading marker regardless of which coupled car owns the simulation or carries the rider. It retains the departure state until the entire train clears the station, including gaps between car centres.
-
-All fourteen vehicles ship their original artwork. Newer vehicle meshes and textures are deferred for future updates and excluded from this bundle. `NewDesign` defaults to `false` and remains for configuration compatibility; a stale `true` setting still shows the originals. The server ZIP is approximately **42.5 MiB**.
-
-Included updates since 0.2.40 improve independent coupled-car landing/contact, station queue progression and chain power, handcar curves and stop/dismount animation, lighting, seating and station presentation. Train lamps turn on at night or under high tunnel/cave cover. Coaster stations have editable signs and a **Return carts to station** button available once per station per server restart. See [release notes](RELEASE_NOTES.md).
-
-Automatic positional resets on coaster loading are removed. Do not rely on momentum always resuming correctly after a restart; live restart behavior remains a validation task.
+Each settings `.cs` file can be edited before restarting Eco. Keep its class, filename and key intact. Large Cargo Cars allow dumping by default; customized opt-outs can be retained. See [customization](customization/README.md).
 
 ## Optional coaster camera
 
-The improved loop camera is a separate, per-player download: [Optional Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.68/Optional.Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip).
+The [optional camera 0.2.66](https://github.com/Teirdalin/The-Railcraft-Workshop/releases/download/v0.2.68/Optional.Railworks-BepInEx-Rollercoaster-Camera-0-2-66.zip) is independently versioned and remains a separate player download. It requires BepInEx 6 IL2CPP on each participating client. Its plugin belongs in `BepInEx/plugins`; toggle with **Shift+F9**. Server updates do not require reinstalling this unchanged optional plugin.
 
-Camera versions are independent of server releases. The current optional package is camera 0.2.66, with a short installation README. Station, physics and model updates do not require reinstalling the camera plugin.
+## Source and validation
 
-Each player who wants it must install a compatible **BepInEx 6 IL2CPP** loader on their own Eco client, then extract the camera ZIP into the folder containing `Eco.exe`. The plugin belongs in `BepInEx/plugins`. The tested Windows x64 loader is BepInEx bleeding-edge build 788. The camera ZIP contains the plugin and its README; it does not include the loader or Eco assemblies.
+`src/Eco.Minecarts` contains the exact authored server source corresponding to 0.2.118. `client` and `models` retain the public authoring material; the complete Unity project and deferred assets are maintained separately. Use the packaged release for installation.
 
-Joining a server does not install the camera plugin. Players without it use Eco's normal camera. Keep the plugin out of server `Mods/UserCode`. The optional camera supports mouse look, follows the occupied car through loops and banks, and toggles with **Shift+F9**. See its [installation guide](development/Eco.Railcraft.CoasterCamera.Client/README.md).
+Matched disposable native server runs passed 2,011 selected cases per build, with 31,731 baseline / 32,583 candidate assertions. The newest cases reduced stale dispatches from 140 to zero; all recovered after fresh observations. All 1,048 saved definitions were unchanged from 0.2.116. Archive CRC, all 24 entry hashes and the release-content guard passed. Live connected gameplay, multiplayer, natural service after reload and whole-server performance remain unverified for this prerelease.
 
-## Source and verification
-
-`src/Eco.Minecarts` contains the server source; `client` contains Unity authoring and exported-asset checks; `models` contains the repository's original model source assets. `development/Eco.Railcraft.CoasterCamera.Client` contains the optional camera source. The preserved deferred model library and generated Unity project are not uploaded to this repository.
-
-Building Unity visuals requires the compatible Eco ModKit, Unity editor and matching authored project/assets. The shipping original-only export uses `MinecartAssetBuilder.BuildOriginalVehiclesBundle`; general modern-model exports are not the release path. Players and server owners should install the release ZIPs rather than copying full source into `Mods`.
-
-**Verification:** clean server/client builds, private native Eco-server regressions, saved-schema compatibility checks and exported Unity animation/asset checks passed. These cover visible original guardrails, interrupted transitions, seat clearance, native physics preservation, wheels, running gear, dumping, handcar movement and station state replication. Live connected-player visuals, multiplayer riding and Linux operation remain unverified for this prerelease. Keep a matching rollback backup.
-
-Original project material is licensed under [JDL-1](LICENSE). Dependency and supplied-material notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This is an unofficial Eco mod.
+Original project material uses [JDL-1](LICENSE); see [third-party notices](THIRD_PARTY_NOTICES.md). This is an unofficial Eco mod.

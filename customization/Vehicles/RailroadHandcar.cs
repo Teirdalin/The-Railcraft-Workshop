@@ -1,18 +1,18 @@
-// Railworks Workshop: edit values, save, and restart Eco. No build tools needed.
-// Keep this filename, namespace, class name and VehicleKey unchanged.
-// Weights in inventory are grams; vehicle/cargo physics masses are kilograms.
+// Edit values and restart Eco. Keep names and VehicleKey unchanged.
 namespace RailworksWorkshop.VehicleSettings
 {
     public static class RailroadHandcarSettings
     {
-        // Original artwork ships in this release; newer vehicle models are deferred.
         public const bool NewDesign = false;
         public const string VehicleKey = "RailroadHandcar";
         public const int CarriedItemWeightGrams = 10000;
         public const double EmptyMassKg = 180;
         public const double CargoCapacityKg = 100;
-        // Automatically unload cargo when crossing a Dumping Rail.
         public const bool AllowDumping = false;
+        // Comma-separated item tags; empty allows all cargo.
+        public const string CargoFilterTags = "";
+        // Feed compatible fuel from cargo to coupled locomotives.
+        public const bool SuppliesLocomotiveFuel = false;
         public const int StorageSlots = 4;
         public const double MaximumSpeedMetresPerSecond = 8;
         public const double PowerWatts = 450;
@@ -22,3 +22,4 @@ namespace RailworksWorkshop.VehicleSettings
         public const double DurabilityHours = 200;
     }
 }
+

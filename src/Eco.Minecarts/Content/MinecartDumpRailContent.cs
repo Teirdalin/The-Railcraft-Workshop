@@ -11,7 +11,7 @@ using Eco.Minecarts.Runtime;
 using Eco.Shared.Localization;
 using Eco.Shared.Serialization;
 
-[Serialized,LocDisplayName("Minecart Dumping Rail"),Weight(12000),LocDescription("Automatically unloads enabled vehicles into linked output inventories. Full or incompatible storage leaves cargo aboard. Crafted at the Railworks Workbench.")]
+[Serialized,LocDisplayName("Minecart Dumping Rail"),Weight(12000),LocDescription("A railway unloading point that tips cargo from vehicles set up for automatic dumping. Link output storage nearby; cargo stays aboard when there is no suitable space. Crafted at the Railworks Workbench.")]
 public sealed class MinecartDumpRailItem:WorldObjectItem<MinecartDumpRailObject>{}
 [Serialized,RequireComponent(typeof(StandaloneAuthComponent)),RequireComponent(typeof(LinkComponent)),RequireComponent(typeof(InOutLinkedInventoriesComponent)),RequireComponent(typeof(MinecartDumpRailComponent))]
 public sealed class MinecartDumpRailObject:WorldObject,IRepresentsItem
@@ -24,5 +24,5 @@ public sealed class MinecartDumpRailObject:WorldObject,IRepresentsItem
 [RequiresSkill(typeof(BasicEngineeringSkill),2)]
 public sealed class MinecartDumpRailRecipe:MinecartRailRecipeFamily
 {
-    public MinecartDumpRailRecipe()=>Configure(MinecartRailRecipes.Make<MinecartDumpRailItem>("Minecart Dumping Rail",6,0,hewnLogs:4),"Minecart Dumping Rail",typeof(MinecartDumpRailRecipe),120,3);
+    public MinecartDumpRailRecipe()=>Configure(MinecartRailRecipes.Make<MinecartDumpRailItem>("Minecart Dumping Rail",6,0,hewnLogs:4),"Minecart Dumping Rail",typeof(MinecartDumpRailRecipe),120,1.5f);
 }

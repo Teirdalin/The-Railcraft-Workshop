@@ -19,6 +19,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 
 [Serialized, MayHaveComponent(typeof(FuelSupplyComponent)), RequireComponent(typeof(TrainControllerComponent)), RequireComponent(typeof(TramRouteComponent))]
+[Eco.Gameplay.Skills.RepairRequiresSkill(typeof(global::Eco.Mods.TechTree.IndustrySkill),3)]
 public sealed class HeritageTramObject : RollingStockObject
 {
     public static RailVehicleSpec DefaultSpecification {get;} = new("HeritageTram", "Heritage Tram", 1250, 100, 4, 2.8f, 1.7f, .5f, 20, 9000, 7000, 9000, 2500, PassengerSeats:6, Model:"Tram");
@@ -27,7 +28,7 @@ public sealed class HeritageTramObject : RollingStockObject
     static HeritageTramObject() => AddOccupancy<HeritageTramObject>([]);
 }
 
-[Serialized, LocDisplayName("Heritage Tram"), LocDescription("Automated city tram. Runs only on Tram Rail connected to a powered mechanical or electrical Tram Cable Drive. No onboard fuel is needed. Use either end panel to open settings; configure its route in the Tram Route page. Crafted at the Electric Machinist Table using Industry."), Weight(15000)]
+[Serialized, LocDisplayName("Heritage Tram"), LocDescription("A street tram for carrying passengers between town stops. Draws power through Tram Rail from a mechanical or electrical Tram Cable Drive, with no fuel needed aboard. Crafted at the Electric Machinist Table using Industry."), Weight(15000)]
 public sealed class HeritageTramItem : RailModuleItem<HeritageTramObject> { }
 
 [RequiresSkill(typeof(IndustrySkill), 3)] public sealed class HeritageTramRecipe : RollingStockRecipe<HeritageTramItem> { }
